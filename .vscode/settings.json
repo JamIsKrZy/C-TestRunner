@@ -1,0 +1,10 @@
+{
+    "errorLens.enabled": true,
+    "errorLens.enabledDiagnosticLevels": [
+        "error",
+        "warning",
+        "info"
+    ],
+    "C_Cpp.errorSquiggles": "enabled"
+}
+  

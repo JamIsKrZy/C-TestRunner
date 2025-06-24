@@ -1,0 +1,7 @@
+[path]
+report_out="report"
+error_out="temp_err"
+
+[process]
+max_child_spawn = 5
+worker_count=2

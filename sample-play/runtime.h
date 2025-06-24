@@ -103,11 +103,11 @@ int main(int argc, char const *argv[]){
         len = c.len;
         thread_list = c.c;
     }
-    char **results = calloc(len, sizeof(char*));
-    if(!results){
-        perror("Fail to setup data!");
-        exit(EXIT_FAILURE);
-    }
+    // char **results = calloc(len, sizeof(char*));
+    // if(!results){
+    //     perror("Fail to setup data!");
+    //     exit(EXIT_FAILURE);
+    // }
 
 
     // init threads
@@ -178,6 +178,8 @@ int main(int argc, char const *argv[]){
         }
         
     }
+
+    free(thread_list);
 
     return 0;
 }

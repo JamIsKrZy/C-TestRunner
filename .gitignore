@@ -1,2 +1,5 @@
 target
-bin_test/testify/*
+sample-play/bintest/*
+test.txt
+
+c_compile.bash

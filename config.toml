@@ -1,5 +1,5 @@
 [setting]
 config_path="sample-play"
-bin_target="sample-play/testify"
+bin_target="sample-play/bintest"
 
 

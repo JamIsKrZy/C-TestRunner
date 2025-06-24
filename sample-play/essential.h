@@ -24,12 +24,13 @@
         .log = {\
             .t = Debug,\
             .msg = {0},\
-            .file_name = __FILE__,\
+            .program_name = __FILE__,\
             .function_name = {0}\
         }\
     };\
     snprintf(data.log.msg, MESSAGE_BUFFER, fmt, ##__VA_ARGS__);\
     snprintf(data.log.function_name, FUNCTION_MAX_CHAR_SIZE, "%s", __func__);\
+    snprintf(data.log.program_name, PROGRAM_NAME_MAX_CHAR_SIZE, "%s", PROGRAM_NAME);\
     \
     fwrite(\
         &data,\

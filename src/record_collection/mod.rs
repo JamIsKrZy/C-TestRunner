@@ -21,17 +21,43 @@ enum StatusType {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct Status{
-    file_name: [u8;32],
+    program_name: [u8;32],
     function_name: [u8;32],
     t: StatusType,
+}
+
+impl Display for Status{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let program_name = String::from_utf8_lossy(&self.program_name);
+        let function_name = String::from_utf8_lossy(&self.function_name);
+
+        write!(f, "{{ \n\tstatus: {:?}\n\tprogram_name: {},\n\tfunction_name: {}\n}}",
+            self.t,
+            program_name,
+            function_name
+        )
+    }
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct Register{
-    file_name: [u8;32],
+    program_name: [u8;32],
     function_name: [u8;32],
 }
+
+impl Display for Register{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let program_name = String::from_utf8_lossy(&self.program_name);
+        let func_name = String::from_utf8_lossy(&self.function_name);
+        
+        write!(f, "{{ \n\tprogram_name: {}, \n\tfunction_name: {}\n}}", 
+            program_name,
+            func_name
+        )
+    }
+}
+
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -56,7 +82,7 @@ impl Display for Log{
         let func_name = String::from_utf8_lossy(&self.function_name);
         let msg = String::from_utf8_lossy(&self.msg);
 
-        write!(f, "{{ LogType: {:?},\nprogram_name: {},\nfunction_name: {},\nmsg: {} }}",
+        write!(f, "{{ \n\tLogType: {:?},\n\tprogram_name: {},\n\tfunction_name: {},\n\tmsg: {} \n}}",
             self.t,
             program_name,
             func_name,
@@ -89,13 +115,13 @@ impl Display for ProcessInfo{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.info_type {
             ProgramInfoType::Register => unsafe {
-                write!(f, "[Register]{:?}", self.data.reg)
+                write!(f, "[Register]{}", self.data.reg)
             },
             ProgramInfoType::Status => unsafe {
-                write!(f, "[Status]{:?}", self.data.stat)
+                write!(f, "[Status]{}", self.data.stat)
             },
             ProgramInfoType::Log => unsafe {
-                write!(f, "[Log]{:?}", self.data.log)
+                write!(f, "[Log]{}", self.data.log)
             },
         }
     }

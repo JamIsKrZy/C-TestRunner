@@ -1,9 +1,9 @@
 #ifndef RUNTIME_SUPPORT
 #define RUNTIME_SUPPORT
 
-// ---------------------------------------------
-//                  Later work on
-// ---------------------------------------------
+
+extern const char* PROGRAM_NAME;
+
 
 /**
  * Process communication to send data to 
@@ -12,6 +12,26 @@
 
 #define MESSAGE_BUFFER 64
 #define FUNCTION_MAX_CHAR_SIZE 32
+#define PROGRAM_NAME_MAX_CHAR_SIZE 32
+
+
+// inform runtime to register testcase
+// register-{program_name}-{func_name}
+// program_name - passed from args
+// register - signal type
+// func_name - user defined
+
+
+// inform runtime to set status test case finished
+// status-{status}-{program_name}-{func_name}
+// program_name - passed from args
+// func_name - registered func
+// status - signal type
+// status - status of the test case
+
+
+// send log
+// log-{type}-{program_name}-{func_name}-{msg}
 
 enum StatusType{
     Success,
@@ -19,13 +39,13 @@ enum StatusType{
 };
 
 struct Status{
-    char file_name[32];
+    char program_name[PROGRAM_NAME_MAX_CHAR_SIZE];
     char function_name[FUNCTION_MAX_CHAR_SIZE];
     enum StatusType t;
 };
 
 struct Register{
-    char file_name[32];
+    char program_name[PROGRAM_NAME_MAX_CHAR_SIZE];
     char function_name[FUNCTION_MAX_CHAR_SIZE];
 };
 
@@ -36,7 +56,7 @@ enum LogType{
 };
 
 struct Log{
-    char file_name[32];
+    char program_name[PROGRAM_NAME_MAX_CHAR_SIZE];
     char function_name[FUNCTION_MAX_CHAR_SIZE];
     char msg[MESSAGE_BUFFER];
     enum LogType t;

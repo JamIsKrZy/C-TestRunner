@@ -321,11 +321,6 @@ pub fn spawn_executable(fc: FileCollection) {
         panic!("Pipeline worker panicked: {:?}", e);
     }
 
-    println!(
-        "{}[ Ending spawn executables ]{}",
-        termion::color::Fg(color::Blue),
-        termion::color::Fg(color::Reset)
-    );
 
 }
 
@@ -342,13 +337,19 @@ pub fn spawn_executable(fc: FileCollection) {
 mod pipe_handler{
     use std::{fmt::Display, fs::File, io::Read, marker::PhantomData, os::fd::{FromRawFd, IntoRawFd, OwnedFd}, sync::{atomic::{AtomicBool, Ordering}, mpsc::{self, Receiver, Sender}, Arc, Mutex}};
 
+    use termion::color;
     use threadpool::ThreadPool;
 
     use crate::{get_global_config_ref, record_collection::{self, ProcessInfo}, spawner::{job_pool::{self, JobFn, SIJChannelHandler}, spawner_linux::SyncronizeErr}};
 
 
     fn dummy_job(i: ProcessInfo){
-        println!("{}", i);
+        println!(
+        "{}{}{}",
+        termion::color::Fg(color::Blue),
+        i,
+        termion::color::Fg(color::Reset)
+    );
     }
 
     pub fn read_pipeline(
@@ -364,7 +365,7 @@ mod pipe_handler{
                 
         // create thread pool
         let (tx, _threadpool) = ThreadPoolGen::init_threadpool(dummy_job);
-            
+        
 
         while flag.load(Ordering::Relaxed) {
             for mut fd in readfds.iter() {
@@ -388,6 +389,28 @@ mod pipe_handler{
         
         println!("[ Draining remaining pipe content ]");
 
+        let mut clean = true;
+        while clean {
+            clean = false;
+
+            for mut fd in readfds.iter() {
+                if fd.read_exact(bin_buff.as_mut()).is_err() {
+                    continue;
+                };
+
+                clean = true;
+
+                let payload = record_collection::bin_convert(&bin_buff);
+                println!("Recieved payload!");
+                // send job to threadpool
+                if tx.send(payload).is_err() {
+                    println!("Unable to send Thread Jobs!");
+                    break;
+                }
+
+
+            }
+        }
 
 
         println!("[ Closing Pipeline Reader ]");

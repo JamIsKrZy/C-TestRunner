@@ -14,6 +14,15 @@
 
 
 
+
+const char *PROGRAM_NAME = NULL;
+
+
+
+
+
+
+
 #define TEST_CASE(func, _ssize) void* func(void*);
 TEST_CASES
 #undef TEST_CASE
@@ -67,33 +76,19 @@ struct contents init_thread_contents(){
 
 
 
-// inform runtime to register testcase
-// register-{file_name}-{func_name}
-// file_name - passed from args
-// register - signal type
-// func_name - user defined
 
 
-// inform runtime to set status test case finished
-// status-{status}-{file_name}-{func_name}
-// file_name - passed from args
-// func_name - registered func
-// status - signal type
-// status - status of the test case
 
-
-// send log
-// log-{type}-{file_name}-{func_name}-{msg}
-
-void send_status(char* from_test, enum StatusType t);
-void send_register(char* test_name);
+void send_status(const char* program_name, char* from_test, enum StatusType t);
+void send_register(const char* program_name, char* test_name);
 
 int main(int argc, char const *argv[]){
-    
-    // for (size_t i = 0; i < argc; i++){
-    //     printf("Checking Args: %s\n", argv[i]);
-    // }
-    
+
+    // init global variable
+    if (argc > 0) {
+        PROGRAM_NAME = argv[0];  
+    }
+
     // const char const *assigned_key = argv[0];
     size_t len; 
     struct test_case *thread_list;
@@ -103,13 +98,7 @@ int main(int argc, char const *argv[]){
         len = c.len;
         thread_list = c.c;
     }
-    char **results = calloc(len, sizeof(char*));
-    if(!results){
-        perror("Fail to setup data!");
-        exit(EXIT_FAILURE);
-    }
-
-
+    
     // init threads
     {
         pthread_attr_t attr;
@@ -122,7 +111,7 @@ int main(int argc, char const *argv[]){
             
             // send information of test case 
             // to parent test runner process 
-            send_register(thread_list[i].thread_name);
+            send_register(argv[0], thread_list[i].thread_name);
 
             pthread_attr_setstacksize(&attr, thread_list[i].ssize);
             
@@ -140,7 +129,7 @@ int main(int argc, char const *argv[]){
     size_t waiting = len;
     char *catch;
     while (waiting){
-        // puts("Waiting for test case...");
+        // Waiting for test case...
         for (size_t i = 0; i < len; i++){
 
             int res = pthread_tryjoin_np(
@@ -152,13 +141,13 @@ int main(int argc, char const *argv[]){
 
                 if(catch){
                     // encounters an error
-                    send_status(thread_list[i].thread_name, Fail);
+                    send_status(argv[0], thread_list[i].thread_name, Fail);
 
                     free(catch);
                 } else {
 
                     // test successfully ended 
-                    send_status(thread_list[i].thread_name, Success);
+                    send_status(argv[0], thread_list[i].thread_name, Success);
                     
                 }
 
@@ -179,19 +168,30 @@ int main(int argc, char const *argv[]){
         
     }
 
+    free(thread_list);
+
     return 0;
 }
 
 
-void send_status(char* from_test, enum StatusType t) {
+
+
+void send_status(const char* program_name, char* from_test, enum StatusType t) {
     ProcessData data = {
         .info_type = Status,
         .stat = {
-            .file_name = __FILE__,
+            .program_name = {0},
             .function_name = {0},
             .t = t
         }
     };
+
+    snprintf(
+        data.stat.program_name, 
+        PROGRAM_NAME_MAX_CHAR_SIZE,
+        "%s", 
+        program_name
+    );
     
     snprintf(
         data.stat.function_name, 
@@ -216,14 +216,21 @@ void send_status(char* from_test, enum StatusType t) {
     );
 }
 
-void send_register(char* test_name){
+void send_register(const char* program_name, char* test_name){
     ProcessData data = {
         .info_type = Register,
         .reg = {
-            .file_name = __FILE__,
+            .program_name = {0},
             .function_name = {0}
         }
     };
+
+    snprintf(
+        data.reg.program_name, 
+        PROGRAM_NAME_MAX_CHAR_SIZE,
+        "%s", 
+        program_name
+    );
 
     snprintf(
         data.stat.function_name, 
@@ -239,6 +246,7 @@ void send_register(char* test_name){
         stdout
     );
 }
+
 
 
 

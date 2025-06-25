@@ -1,6 +1,8 @@
 use std::{collections::{BTreeMap, HashMap}, ops::Index, sync::{Arc, Mutex, RwLock}};
 
-use crate::record_collection::{Log, ProcessInfo, Register, Status};
+use termion::color;
+
+use crate::{record_collection::{Log, ProcessInfo, Register, Status}, util};
 use super::ProgramInfoType;
 use super::{LogTypeMessage, RecordErr, StatusType};
 
@@ -10,20 +12,20 @@ type TestKeys = RwLock<HashMap<String, usize>>;
 type Test = Mutex<(StatusType, Logs)>;
 
 
-trait StoreData{
+pub trait StoreData{
     type T;
     type U;
 
     fn store(&self, data: Self::T) -> Result<(), Self::U>;
 }
 
-
-
+#[derive(Debug)]
 struct TestCollection {
     test_map: RwLock<BTreeMap<String, TestKeys>>,
     test_list: RwLock<Vec<Test>>,
 }
 
+#[derive(Debug)]
 pub struct TestRecord(Arc<TestCollection>);
 
 impl TestRecord {
@@ -45,10 +47,10 @@ impl TestRecord {
     }   
 
 
-    fn register_process(&self, process_name: String) -> Result<(), RecordErr> {
-        let Ok(mut c) = self.0.test_map.write() else {
-            todo!()
-        };
+    pub fn register_process(&mut self, process_name: String) -> Result<(), RecordErr> {
+        let mut c = self.0.test_map.write()
+            .map_err(|_| RecordErr::PoisonedWrite)?;
+
 
         c.entry(process_name).or_insert(
             RwLock::new(HashMap::new())
@@ -59,25 +61,28 @@ impl TestRecord {
 
 
     fn register_test(&self, test_data: Register) -> Result<(), RecordErr> {
-        let Ok(c) = &self.0.test_map.read() else {
-            todo!()
-        };
+        let c = &self.0.test_map.read()
+            .map_err(|_| RecordErr::PoisonedWrite)?;
+
 
         let (program_name, function_name) = {
             (
-                String::from_utf8(test_data.program_name.to_vec()).map_err(|_| RecordErr::UNDEFINED_ERR)?,
-                String::from_utf8(test_data.function_name.to_vec()).map_err(|_| RecordErr::UNDEFINED_ERR)?,
+                util::bytes_to_trimmed_string(&test_data.program_name)
+                    .map_err(|_| RecordErr::Utf8ConvertionErr)?,
+                util::bytes_to_trimmed_string(&test_data.function_name)
+                    .map_err(|_| RecordErr::Utf8ConvertionErr)?,
             )
         };
 
-        let mut process_data = c.get(&program_name)
-            .ok_or(RecordErr::UNDEFINED_ERR)?
+
+        let mut process_data = c.get(program_name.trim())
+            .ok_or(RecordErr::ProgramNotExist)?
             .write()
-            .map_err(|_| RecordErr::UNDEFINED_ERR)?;
+            .map_err(|_| RecordErr::PoisonedWrite)?;
 
 
         let entry_index = self.new_test_entry()
-            .ok_or(RecordErr::UNDEFINED_ERR)?;
+            .ok_or(RecordErr::PoisonedLock)?;
 
         process_data.insert(function_name, entry_index);
 
@@ -88,34 +93,34 @@ impl TestRecord {
         &self,
         stat: Status
     ) -> Result<(), RecordErr> {
-        let Ok(test_map) = &self.0.test_map.read() else {
-            todo!()
-        };
+        let test_map = &self.0.test_map.read()
+            .map_err(|_| RecordErr::PoisonedWrite)?;
 
         let (program_name, function_name) = {
             (
-                String::from_utf8(stat.program_name.to_vec()).map_err(|_| RecordErr::UNDEFINED_ERR)?,
-                String::from_utf8(stat.function_name.to_vec()).map_err(|_| RecordErr::UNDEFINED_ERR)?,
+                util::bytes_to_trimmed_string(&stat.program_name)
+                    .map_err(|_| RecordErr::Utf8ConvertionErr)?,
+                util::bytes_to_trimmed_string(&stat.function_name)
+                    .map_err(|_| RecordErr::Utf8ConvertionErr)?,
             )
         };
 
-
         // search through the map
         let test_index = test_map.get(&program_name)
-            .ok_or(RecordErr::UNDEFINED_ERR)?
+            .ok_or(RecordErr::ProgramNotExist)?
             .read()
-            .map_err(|_| RecordErr::UNDEFINED_ERR)?
+            .map_err(|_| RecordErr::PoisonedRead)?
             .get(&function_name)
             .copied()
-            .ok_or(RecordErr::UNDEFINED_ERR)?;
+            .ok_or(RecordErr::TestNotExist)?;
 
-        let Ok(read_list) = self.0.test_list.read() else {
-            todo!()
-        };
+        let read_list = self.0.test_list
+            .read()
+            .map_err(|_| RecordErr::PoisonedRead)?;
 
         let mut test_lock = read_list.index(test_index)
             .lock()
-            .map_err(|_| RecordErr::UNDEFINED_ERR)?;
+            .map_err(|_| RecordErr::PoisonedLock)?;
 
         test_lock.0 = stat.t;
 
@@ -126,32 +131,36 @@ impl TestRecord {
         &self, 
         log: Log
     ) -> Result<(), RecordErr> {
-        let Ok(test_map) = &self.0.test_map.read() else {
-            todo!()
-        };
+        let test_map = &self.0.test_map
+            .read()
+            .map_err(|_| RecordErr::PoisonedRead)?;
+
 
         let (program_name, function_name) = {
             (
-                String::from_utf8(log.program_name.to_vec()).map_err(|_| RecordErr::UNDEFINED_ERR)?,
-                String::from_utf8(log.function_name.to_vec()).map_err(|_| RecordErr::UNDEFINED_ERR)?,
+                util::bytes_to_trimmed_string(&log.program_name)
+                    .map_err(|_| RecordErr::Utf8ConvertionErr)?,
+                util::bytes_to_trimmed_string(&log.function_name)
+                    .map_err(|_| RecordErr::Utf8ConvertionErr)?,
             )
         };
 
+        
         let test_index = test_map.get(&program_name)
-            .ok_or(RecordErr::UNDEFINED_ERR)?
+            .ok_or(RecordErr::ProgramNotExist)?
             .read()
-            .map_err(|_| RecordErr::UNDEFINED_ERR)?
+            .map_err(|_| RecordErr::PoisonedRead)?
             .get(&function_name)
             .copied()
-            .ok_or(RecordErr::UNDEFINED_ERR)?;
+            .ok_or(RecordErr::TestNotExist)?;
 
-        let Ok(read_list) = self.0.test_list.read() else {
-            todo!()
-        };
+        let read_list = self.0.test_list
+            .read()
+            .map_err(|_| RecordErr::PoisonedRead)?;
 
         let mut test_lock = read_list.index(test_index)
             .lock()
-            .map_err(|_| RecordErr::UNDEFINED_ERR)?;
+            .map_err(|_| RecordErr::PoisonedLock)?;
         
         test_lock.1.push(log.into());
 
@@ -171,20 +180,32 @@ impl StoreData for TestRecord{
     type U = ();
 
     fn store(&self, data: Self::T) -> Result<(), Self::U> {
-        match data.info_type {
+        
+        let i =match data.info_type {
             ProgramInfoType::Register => unsafe{
-                println!("{}", data.data.reg);
+
+                self.register_test(data.data.reg)
                 // self.register_test(data.data.reg)
             },
             ProgramInfoType::Status => unsafe{
-                println!("{}", data.data.stat);
+                self.update_test_status(data.data.stat)
                 // self.register_test(data.data.stat)
             },
             ProgramInfoType::Log => unsafe{
-                println!("{}", data.data.log);
+                self.append_test_logs(data.data.log)
                 // self.register_test(data.data.log)
             },
+        };
+
+        if let Err(it) = i {
+            println!("{}FAIL: {:?}{}\n{}", 
+                termion::color::Fg(color::Red), 
+                it,
+                termion::color::Fg(color::Reset),
+                data
+            );
         }
+
         Ok(())
     }
 }

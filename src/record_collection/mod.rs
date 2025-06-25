@@ -1,15 +1,30 @@
 use std::{fmt::Display, io};
 
+use crate::util;
+
 
 pub mod collection;
 
-enum RecordErr {
-    TestMapCorrupted,
-    TestInfoCorrupted,
-    RecordAlreadyExist,
-    StatusIsDefined,
-    UNDEFINED_ERR
+#[derive(Debug)]
+pub enum RecordErr {
+    PoisonedRead,
+    PoisonedWrite,
+    PoisonedLock,
+    ProgramNotExist,
+    TestNotExist,
+    
+    Utf8ConvertionErr
 }
+
+
+
+
+
+const MESSAGE_BUFFER:usize = 64;
+const FUNCTION_MAX_CHAR_SIZE:usize = 32;
+const PROGRAM_NAME_MAX_CHAR_SIZE:usize =64;
+
+
 
 
 #[repr(C)]
@@ -22,8 +37,8 @@ enum StatusType {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct Status{
-    program_name: [u8;32],
-    function_name: [u8;32],
+    program_name: [u8;PROGRAM_NAME_MAX_CHAR_SIZE],
+    function_name: [u8;FUNCTION_MAX_CHAR_SIZE],
     t: StatusType,
 }
 
@@ -43,8 +58,8 @@ impl Display for Status{
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct Register{
-    program_name: [u8;32],
-    function_name: [u8;32],
+    program_name: [u8;PROGRAM_NAME_MAX_CHAR_SIZE],
+    function_name: [u8;FUNCTION_MAX_CHAR_SIZE],
 }
 
 impl Display for Register{
@@ -71,9 +86,9 @@ enum LogType{
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct Log{
-    program_name: [u8;32],
-    function_name: [u8;32],
-    msg: [u8;64],
+    program_name: [u8;PROGRAM_NAME_MAX_CHAR_SIZE],
+    function_name: [u8;FUNCTION_MAX_CHAR_SIZE],
+    msg: [u8;MESSAGE_BUFFER],
     t: LogType
 }
 
@@ -129,25 +144,33 @@ impl Display for ProcessInfo{
 }
 
 
+#[derive(Debug)]
 enum LogTypeMessage {
     Debug(String),
     Info(String),
     Warning(String),
 }
 
+
+
+
+
 impl From<Log> for LogTypeMessage{
+
+    
+
     fn from(value: Log) -> Self {
         match value.t {
             LogType::Debug => LogTypeMessage::Debug(
-                String::from_utf8(value.msg.to_vec())
+                util::bytes_to_trimmed_string(&value.msg)
                     .unwrap_or("[Data Courrpted]".to_string())
             ),
             LogType::Info => LogTypeMessage::Info(
-                String::from_utf8(value.msg.to_vec())
+                util::bytes_to_trimmed_string(&value.msg)
                     .unwrap_or("[Data Courrpted]".to_string())
             ),
             LogType::Warning => LogTypeMessage::Warning(
-                String::from_utf8(value.msg.to_vec())
+                util::bytes_to_trimmed_string(&value.msg)
                     .unwrap_or("[Data Courrpted]".to_string())
             ),
         }

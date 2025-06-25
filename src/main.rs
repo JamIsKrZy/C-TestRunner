@@ -4,6 +4,7 @@ mod collect;
 mod displayer;
 mod spawner;
 mod record_collection;
+mod util;
 
 use std::sync::OnceLock;
 use std::fs;

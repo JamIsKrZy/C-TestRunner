@@ -7,6 +7,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use crate::get_global_config_ref;
+use crate::record_collection::collection::TestRecord;
 
 use nix::libc::WEXITSTATUS;
 use nix::libc::WIFEXITED;
@@ -44,6 +45,11 @@ enum ProcessErr {
     Stopped,
     UndefinedTermination,
 }
+
+type PidsTrack = (
+    Box<[libc::pid_t]>,
+    Box<[usize]>,
+);
 
 
 
@@ -203,6 +209,7 @@ fn fill_spawn_pool(
     pid_index_ref: &mut usize,
     file_details: (usize, &(String, String)),
     file_action: &posix_spawn_file_actions_t,
+    shared_collection: &mut TestRecord
 ) {
     //spawn new process
     let stat = spawn_process(pid, file_details.1.1.as_str(), &file_action);
@@ -216,6 +223,10 @@ fn fill_spawn_pool(
                 color::Fg(color::Reset)
             );
             *pid_index_ref = file_details.0;
+
+            let _ = shared_collection.register_process(file_details.1.1.trim().to_owned());
+
+
         }
         Err(e) => {
             println!(
@@ -229,13 +240,12 @@ fn fill_spawn_pool(
     }
 }
 
-type PidsTrack = (
-    Box<[libc::pid_t]>,
-    Box<[usize]>,
-);
 
 pub fn spawn_executable(fc: FileCollection) {
     let pool_limit = get_global_config_ref().process.max_child_spawn;
+
+    let mut test_collection = TestRecord::new();
+
 
     let (readfd_list, writefd_list, mut file_actions) = init_pipe_with_file_action();
 
@@ -249,18 +259,18 @@ pub fn spawn_executable(fc: FileCollection) {
     let flag = Arc::new(AtomicBool::new(true));
     // let reports = Arc::new(TRecord::new());
 
+
     //start thread to read from pipline
-    let pipeline_worker;
     let flag_clone = flag.clone();
-        // let flag_clone2 = flag.clone();
-        // let report_clone = reports.clone();
-
-
-    pipeline_worker = thread::spawn(move || pipe_handler::read_pipeline(readfd_list, flag_clone));
+    let clone_collection = test_collection.clone();
+    let pipeline_worker = thread::spawn(move || pipe_handler::read_pipeline(
+        clone_collection,
+        readfd_list, 
+        flag_clone
+    ));
     
 
     let mut executable_left = fc.len();
-
     while executable_left > 0 {
         for i in 0..pool_limit {
             if pids.0[i] != -1 {
@@ -275,7 +285,10 @@ pub fn spawn_executable(fc: FileCollection) {
                 &mut pids.1[i],
                 file_detials,
                 &file_actions[i],
+                &mut test_collection
             );
+
+
         }
 
         for i in 0..pool_limit {
@@ -322,6 +335,9 @@ pub fn spawn_executable(fc: FileCollection) {
     }
 
 
+    println!("{:#?}", test_collection);
+
+
 }
 
 
@@ -340,7 +356,7 @@ mod pipe_handler{
     use termion::color;
     use threadpool::ThreadPool;
 
-    use crate::{get_global_config_ref, record_collection::{self, ProcessInfo}, spawner::{job_pool::{self, JobFn, SIJChannelHandler}, spawner_linux::SyncronizeErr}};
+    use crate::{get_global_config_ref, record_collection::{self, collection::{StoreData, TestRecord}, ProcessInfo}, spawner::{job_pool::{self, JobFn, SIJChannelHandler}, spawner_linux::SyncronizeErr}};
 
 
     fn dummy_job(i: ProcessInfo){
@@ -353,6 +369,7 @@ mod pipe_handler{
     }
 
     pub fn read_pipeline(
+        shared_collection: TestRecord,
         readfds: Vec<OwnedFd>,
         flag: Arc<AtomicBool>,
     ) -> Result<(), SyncronizeErr> {
@@ -364,7 +381,7 @@ mod pipe_handler{
         let mut bin_buff = Box::new([0u8; std::mem::size_of::<ProcessInfo>()]);
                 
         // create thread pool
-        let (tx, _threadpool) = ThreadPoolGen::init_threadpool(dummy_job);
+        let (tx, threadpool) = ThreadPoolGen::init_threadpool(shared_collection);
         
 
         while flag.load(Ordering::Relaxed) {
@@ -414,6 +431,10 @@ mod pipe_handler{
 
 
         println!("[ Closing Pipeline Reader ]");
+
+        drop(tx);
+        threadpool.join();
+
         Ok(())
     }
 
@@ -428,17 +449,16 @@ mod pipe_handler{
             .collect()
     }
 
-    struct ThreadPoolGen<T, F, U>{
-        _phantom: PhantomData<(T,F,U)>
+    struct ThreadPoolGen<T, S>{
+        _phantom: PhantomData<(T,S)>
     }
 
-    impl<T, F, U> ThreadPoolGen<T, F, U>
+    impl<T, S> ThreadPoolGen<T, S>
     where T: Send + Sync + 'static,
-          F: Fn(T) -> U + Send + Sync + 'static,
-          U: ReportDisplay 
+          S: StoreData<T = T> + Clone + Send + Sync + 'static
     {
 
-        pub fn init_threadpool(op: F) -> (Sender<T>,ThreadPool){
+        pub fn init_threadpool(op: S) -> (Sender<T>,ThreadPool){
             let config_worker_count = get_global_config_ref().process.worker_count;
 
             let mut tp = ThreadPool::new(config_worker_count);
@@ -459,14 +479,13 @@ mod pipe_handler{
             rx: Receiver<T>,
             thread_pool: &mut ThreadPool,
             config_worker_count: usize,
-            op: F
+            shared_collection: S
         ){
             let arc_rx = Arc::new(Mutex::new(rx));
-            let arc_op = Arc::new(op);
-
+            
             for _ in 0..config_worker_count{
                 let clone_rx = arc_rx.clone();
-                let clone_op = arc_op.clone();
+                let clone_collection = shared_collection.clone();
 
                 thread_pool.execute( move || loop {
                     
@@ -480,7 +499,7 @@ mod pipe_handler{
                         break;
                     };
 
-                    let _u = clone_op(item);
+                    let _u = clone_collection.store(item);
 
 
 

@@ -1,6 +1,5 @@
 
 
-
 #define TEST_CASES\
     TEST_CASE(addition, DEFAULT_SSIZE)\
     TEST_CASE(multi, DEFAULT_SSIZE)\

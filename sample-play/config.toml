@@ -1,3 +1,5 @@
+# More options settings are in README.md file
+
 [path]
 report_out="report"
 error_out="temp_err"

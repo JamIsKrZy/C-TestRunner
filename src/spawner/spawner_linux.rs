@@ -476,7 +476,7 @@ mod pipe_handler{
                     };
 
                     let Ok(item) = lock.recv() else {
-                        eprint!("Failed to recieve from sender!\n");
+                        // eprint!("Failed to recieve from sender!\n");
                         break;
                     };
 

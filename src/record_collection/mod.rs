@@ -8,6 +8,7 @@ enum RecordErr {
     TestInfoCorrupted,
     RecordAlreadyExist,
     StatusIsDefined,
+    UNDEFINED_ERR
 }
 
 
@@ -132,6 +133,25 @@ enum LogTypeMessage {
     Debug(String),
     Info(String),
     Warning(String),
+}
+
+impl From<Log> for LogTypeMessage{
+    fn from(value: Log) -> Self {
+        match value.t {
+            LogType::Debug => LogTypeMessage::Debug(
+                String::from_utf8(value.msg.to_vec())
+                    .unwrap_or("[Data Courrpted]".to_string())
+            ),
+            LogType::Info => LogTypeMessage::Info(
+                String::from_utf8(value.msg.to_vec())
+                    .unwrap_or("[Data Courrpted]".to_string())
+            ),
+            LogType::Warning => LogTypeMessage::Warning(
+                String::from_utf8(value.msg.to_vec())
+                    .unwrap_or("[Data Courrpted]".to_string())
+            ),
+        }
+    }
 }
 
 #[inline(always)]

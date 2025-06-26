@@ -78,9 +78,20 @@ struct contents init_thread_contents(){
 
 
 
-
-void send_status(const char* program_name, char* from_test, enum StatusType t);
-void send_register(const char* program_name, char* test_name);
+void send_warning_msg(
+    const char* program_name, 
+    const char* function_name, 
+    const char* msg
+);
+void send_status(
+    const char* program_name, 
+    char* from_test, 
+    enum StatusType t
+);
+void send_register(
+    const char* program_name, 
+    char* test_name
+);
 
 int main(int argc, char const *argv[]){
 
@@ -142,7 +153,7 @@ int main(int argc, char const *argv[]){
                 if(catch){
                     // encounters an error
                     send_status(argv[0], thread_list[i].thread_name, Fail);
-
+                    send_warning_msg(argv[0], thread_list[i].thread_name,(const char*)catch);
                     free(catch);
                 } else {
 
@@ -239,6 +250,33 @@ void send_register(const char* program_name, char* test_name){
         test_name
     );
 
+    fwrite(
+        &data,
+        1,
+        sizeof(ProcessData),
+        stdout
+    );
+}
+
+void send_warning_msg(
+    const char* program_name, 
+    const char* function_name, 
+    const char* msg
+){
+    ProcessData data = {
+        .info_type = Log,
+        .log = {\
+            .t = Warning,\
+            .msg = {0},\
+            .program_name = __FILE__,
+            .function_name = {0}\
+        }
+    };
+
+    snprintf(data.log.msg, MESSAGE_BUFFER, "%s", msg);
+    snprintf(data.log.function_name, FUNCTION_MAX_CHAR_SIZE, "%s", function_name);
+    snprintf(data.log.program_name, PROGRAM_NAME_MAX_CHAR_SIZE, "%s", program_name);
+    
     fwrite(
         &data,
         1,

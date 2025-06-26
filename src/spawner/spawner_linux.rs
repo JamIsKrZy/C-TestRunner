@@ -7,6 +7,8 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use crate::get_global_config_ref;
+use crate::record_collection::collection::CompiledRecord;
+use crate::record_collection::collection::TestRecord;
 
 use nix::libc::WEXITSTATUS;
 use nix::libc::WIFEXITED;
@@ -26,10 +28,7 @@ use termion::color;
 
 use crate::collect::FileCollection;
 
-#[derive(Debug)]
-enum SyncronizeErr {
-    CorruptedData,
-}
+
 
 #[derive(Debug)]
 enum SpawnErr {
@@ -45,7 +44,7 @@ enum ProcessErr {
     UndefinedTermination,
 }
 
-
+type PidsTrack = (Box<[libc::pid_t]>, Box<[usize]>);
 
 fn init_pipe_with_file_action() -> (Vec<OwnedFd>, Vec<OwnedFd>, Vec<posix_spawn_file_actions_t>) {
     let DEFAULT_POOL_COUNT = get_global_config_ref().process.max_child_spawn;
@@ -53,7 +52,6 @@ fn init_pipe_with_file_action() -> (Vec<OwnedFd>, Vec<OwnedFd>, Vec<posix_spawn_
     let mut readfd_list = Vec::<OwnedFd>::with_capacity(DEFAULT_POOL_COUNT);
     let mut writefd_list = Vec::<OwnedFd>::with_capacity(DEFAULT_POOL_COUNT);
     let mut action_files: Vec<posix_spawn_file_actions_t> = Vec::with_capacity(DEFAULT_POOL_COUNT);
-
 
     for _ in 0..DEFAULT_POOL_COUNT {
         let (readfd, writefd) = unistd::pipe().expect("Failed to create pipelines");
@@ -90,9 +88,6 @@ fn file_action_t_init(readfd: &OwnedFd, writefd: &OwnedFd) -> posix_spawn_file_a
 use nix::unistd;
 use std::sync::Arc;
 
-
-
-
 fn spawn_process(
     pid: &mut libc::pid_t,
     exe_str: &str,
@@ -124,9 +119,6 @@ fn spawn_process(
 
     Ok(())
 }
-
-
-
 
 fn read_pid_status(pid: &libc::pid_t, origin: &str) -> Result<bool, ProcessErr> {
     let mut status: libc::c_int = 0;
@@ -195,14 +187,12 @@ fn read_pid_status(pid: &libc::pid_t, origin: &str) -> Result<bool, ProcessErr> 
     Err(ProcessErr::UndefinedTermination)
 }
 
-
-
-
 fn fill_spawn_pool(
     pid: &mut libc::pid_t,
     pid_index_ref: &mut usize,
     file_details: (usize, &(String, String)),
     file_action: &posix_spawn_file_actions_t,
+    shared_collection: &mut TestRecord,
 ) {
     //spawn new process
     let stat = spawn_process(pid, file_details.1.1.as_str(), &file_action);
@@ -216,6 +206,8 @@ fn fill_spawn_pool(
                 color::Fg(color::Reset)
             );
             *pid_index_ref = file_details.0;
+
+            let _ = shared_collection.register_process(file_details.1.1.trim().to_owned());
         }
         Err(e) => {
             println!(
@@ -229,17 +221,14 @@ fn fill_spawn_pool(
     }
 }
 
-type PidsTrack = (
-    Box<[libc::pid_t]>,
-    Box<[usize]>,
-);
-
-pub fn spawn_executable(fc: FileCollection) {
+pub fn spawn_executable(fc: FileCollection) -> Option<CompiledRecord> {
     let pool_limit = get_global_config_ref().process.max_child_spawn;
+
+    let mut test_collection = TestRecord::new();
 
     let (readfd_list, writefd_list, mut file_actions) = init_pipe_with_file_action();
 
-    let mut pids: PidsTrack =  (
+    let mut pids: PidsTrack = (
         vec![-1; pool_limit].into_boxed_slice(),
         vec![0; pool_limit].into_boxed_slice(),
     );
@@ -250,17 +239,13 @@ pub fn spawn_executable(fc: FileCollection) {
     // let reports = Arc::new(TRecord::new());
 
     //start thread to read from pipline
-    let pipeline_worker;
     let flag_clone = flag.clone();
-        // let flag_clone2 = flag.clone();
-        // let report_clone = reports.clone();
-
-
-    pipeline_worker = thread::spawn(move || pipe_handler::read_pipeline(readfd_list, flag_clone));
-    
+    let clone_collection = test_collection.clone();
+    let pipeline_worker = thread::spawn(move || {
+        pipe_handler::read_pipeline(clone_collection, readfd_list, flag_clone)
+    });
 
     let mut executable_left = fc.len();
-
     while executable_left > 0 {
         for i in 0..pool_limit {
             if pids.0[i] != -1 {
@@ -275,6 +260,7 @@ pub fn spawn_executable(fc: FileCollection) {
                 &mut pids.1[i],
                 file_detials,
                 &file_actions[i],
+                &mut test_collection,
             );
         }
 
@@ -321,51 +307,60 @@ pub fn spawn_executable(fc: FileCollection) {
         panic!("Pipeline worker panicked: {:?}", e);
     }
 
-
+    test_collection.compile().ok()
 }
 
-
-
-
-
-
-
-
-
-
-
-mod pipe_handler{
-    use std::{fmt::Display, fs::File, io::Read, marker::PhantomData, os::fd::{FromRawFd, IntoRawFd, OwnedFd}, sync::{atomic::{AtomicBool, Ordering}, mpsc::{self, Receiver, Sender}, Arc, Mutex}};
+mod pipe_handler {
+    use std::{
+        fmt::Display,
+        fs::File,
+        io::Read,
+        marker::PhantomData,
+        os::fd::{FromRawFd, IntoRawFd, OwnedFd},
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicBool, Ordering},
+            mpsc::{self, Receiver, Sender},
+        },
+    };
 
     use termion::color;
     use threadpool::ThreadPool;
 
-    use crate::{get_global_config_ref, record_collection::{self, ProcessInfo}, spawner::{job_pool::{self, JobFn, SIJChannelHandler}, spawner_linux::SyncronizeErr}};
+    use crate::{
+        get_global_config_ref,
+        record_collection::{
+            self, ProcessInfo,
+            collection::{StoreData, TestRecord},
+        },
+        spawner::{
+            job_pool::{self, JobFn, SIJChannelHandler},
+        },
+    };
 
-
-    fn dummy_job(i: ProcessInfo){
+    fn dummy_job(i: ProcessInfo) {
         println!(
-        "{}{}{}",
-        termion::color::Fg(color::Blue),
-        i,
-        termion::color::Fg(color::Reset)
-    );
+            "{}{}{}",
+            termion::color::Fg(color::Blue),
+            i,
+            termion::color::Fg(color::Reset)
+        );
     }
 
     pub fn read_pipeline(
+        shared_collection: TestRecord,
         readfds: Vec<OwnedFd>,
         flag: Arc<AtomicBool>,
-    ) -> Result<(), SyncronizeErr> {
+    ){
         println!("[ ThreadRunner is Listening ]");
         println!("[ Pipeline Reader Active ]");
 
         // Set all file descrptors as File Objects
         let readfds = set_fd_to_file(readfds);
         let mut bin_buff = Box::new([0u8; std::mem::size_of::<ProcessInfo>()]);
-                
+
         // create thread pool
-        let (tx, _threadpool) = ThreadPoolGen::init_threadpool(dummy_job);
-        
+        let (tx, threadpool) = ThreadPoolGen::init_threadpool(shared_collection);
 
         while flag.load(Ordering::Relaxed) {
             for mut fd in readfds.iter() {
@@ -374,19 +369,14 @@ mod pipe_handler{
                 };
 
                 let payload = record_collection::bin_convert(&bin_buff);
-                println!("Recieved payload!");
                 // send job to threadpool
                 if tx.send(payload).is_err() {
                     println!("Unable to send Thread Jobs!");
                     break;
                 }
-
-
             }
         }
 
-
-        
         println!("[ Draining remaining pipe content ]");
 
         let mut clean = true;
@@ -401,104 +391,82 @@ mod pipe_handler{
                 clean = true;
 
                 let payload = record_collection::bin_convert(&bin_buff);
-                println!("Recieved payload!");
+
                 // send job to threadpool
                 if tx.send(payload).is_err() {
                     println!("Unable to send Thread Jobs!");
                     break;
                 }
-
-
             }
         }
 
-
         println!("[ Closing Pipeline Reader ]");
-        Ok(())
+
+        drop(tx);
+        threadpool.join();
+
+        ()
     }
 
-
-    fn set_fd_to_file(readfds: Vec<OwnedFd>) -> Vec<File>{
-        readfds.into_iter()
-            .map(|i| {
-                unsafe { 
-                    File::from_raw_fd(i.into_raw_fd()) 
-                }
-            })
+    fn set_fd_to_file(readfds: Vec<OwnedFd>) -> Vec<File> {
+        readfds
+            .into_iter()
+            .map(|i| unsafe { File::from_raw_fd(i.into_raw_fd()) })
             .collect()
     }
 
-    struct ThreadPoolGen<T, F, U>{
-        _phantom: PhantomData<(T,F,U)>
+    struct ThreadPoolGen<T, S> {
+        _phantom: PhantomData<(T, S)>,
     }
 
-    impl<T, F, U> ThreadPoolGen<T, F, U>
-    where T: Send + Sync + 'static,
-          F: Fn(T) -> U + Send + Sync + 'static,
-          U: ReportDisplay 
+    impl<T, S> ThreadPoolGen<T, S>
+    where
+        T: Send + Sync + 'static,
+        S: StoreData<T = T> + Clone + Send + Sync + 'static,
     {
-
-        pub fn init_threadpool(op: F) -> (Sender<T>,ThreadPool){
+        pub fn init_threadpool(op: S) -> (Sender<T>, ThreadPool) {
             let config_worker_count = get_global_config_ref().process.worker_count;
 
             let mut tp = ThreadPool::new(config_worker_count);
             let (tx, rx) = mpsc::channel::<T>();
-            
-            Self::init_jobs(
-                rx,
-                &mut tp, 
-                config_worker_count,
-                op
-            );
+
+            Self::init_jobs(rx, &mut tp, config_worker_count, op);
 
             (tx, tp)
         }
-        
-        
+
         fn init_jobs(
             rx: Receiver<T>,
             thread_pool: &mut ThreadPool,
             config_worker_count: usize,
-            op: F
-        ){
+            shared_collection: S,
+        ) {
             let arc_rx = Arc::new(Mutex::new(rx));
-            let arc_op = Arc::new(op);
 
-            for _ in 0..config_worker_count{
+            for _ in 0..config_worker_count {
                 let clone_rx = arc_rx.clone();
-                let clone_op = arc_op.clone();
+                let clone_collection = shared_collection.clone();
 
-                thread_pool.execute( move || loop {
-                    
-                    let Ok(lock) = clone_rx.lock() else {
-                        eprint!("Failed to get lock!");
-                        break;
-                    };
+                thread_pool.execute(move || {
+                    loop {
+                        let Ok(lock) = clone_rx.lock() else {
+                            eprint!("Failed to get lock!");
+                            break;
+                        };
 
-                    let Ok(item) = lock.recv() else {
-                        eprint!("Failed to recieve from sender!\n");
-                        break;
-                    };
+                        let Ok(item) = lock.recv() else {
+                            // eprint!("Failed to recieve from sender!\n");
+                            break;
+                        };
 
-                    let _u = clone_op(item);
-
-
-
+                        let _u = clone_collection.store(item);
+                    }
                 });
             }
-        
         }
     }
 
+    trait ReportDisplay {}
 
-    trait ReportDisplay{
-        
-    }
-
-
-    impl ReportDisplay for () {
-
-    }
-
+    impl ReportDisplay for () {}
 }
-

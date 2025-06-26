@@ -12,7 +12,7 @@ extern const char* PROGRAM_NAME;
 
 #define MESSAGE_BUFFER 64
 #define FUNCTION_MAX_CHAR_SIZE 32
-#define PROGRAM_NAME_MAX_CHAR_SIZE 32
+#define PROGRAM_NAME_MAX_CHAR_SIZE 64
 
 
 // inform runtime to register testcase

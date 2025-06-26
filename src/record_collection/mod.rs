@@ -1,4 +1,4 @@
-use std::{fmt::Display, io};
+use std::{fmt::Display};
 
 use crate::util;
 
@@ -21,6 +21,7 @@ const PROGRAM_NAME_MAX_CHAR_SIZE: usize = 64;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+#[allow(unused)]
 enum StatusType {
     Success,
     Fail,
@@ -69,6 +70,7 @@ impl Display for Register {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+#[allow(unused)]
 enum LogType {
     Debug,
     Info,
@@ -99,6 +101,7 @@ impl Display for Log {
 }
 
 #[repr(C)]
+#[allow(unused)]
 enum ProgramInfoType {
     Register = 0,
     Status = 1,
@@ -107,9 +110,9 @@ enum ProgramInfoType {
 
 #[repr(C)]
 pub union ProgramData {
-    pub log: Log,
-    pub reg: Register,
-    pub stat: Status,
+    log: Log,
+    reg: Register,
+    stat: Status,
 }
 
 #[repr(C)]
@@ -129,6 +132,7 @@ impl Display for ProcessInfo {
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 enum LogTypeMessage {
     Debug(String),
     Info(String),

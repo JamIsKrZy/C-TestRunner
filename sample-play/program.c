@@ -12,7 +12,12 @@
 TEST(addition){
     int some = 1+1;
 
-    debug("Hello %d", some);
+    debug_log("Hello %d", some);
+    debug_log("Hello %d", some);
+    debug_log("Hello %d", some);
+    debug_log("Hello %d", some);
+    debug_log("Hello %d", some);
+    debug_log("Hello %d", some);
 
 
     RETURN_SUCCESS;
@@ -21,12 +26,12 @@ TEST(addition){
 TEST(multi){
     int some = 1*5;
 
-    RETURN_SUCCESS;
+    RETURN_FAIL;
 }
 
 TEST(emtpy){
     int some = 0;
-    
+
 
     RETURN_FAIL;
 }
@@ -40,7 +45,7 @@ TEST(computey){
         sum += some[i];
     }
 
-    debug("%d", sum);
+    debug_log("%d", sum);
 
 
     RETURN_SUCCESS;

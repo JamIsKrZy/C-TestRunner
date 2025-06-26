@@ -1,4 +1,4 @@
-use std::{fs, io, path::Path};
+use std::{fs, path::Path};
 
 #[cfg(target_os = "linux")]
 use std::os::unix::fs::PermissionsExt;
@@ -6,6 +6,7 @@ use std::os::unix::fs::PermissionsExt;
 use walkdir::{DirEntry, WalkDir};
 
 #[derive(Debug)]
+#[allow(unused)]
 pub enum CollectErr {
     FolderReadProblem,
     InternalConversion,

@@ -1,4 +1,3 @@
-mod TestRecordHolder;
 mod collect;
 mod displayer;
 mod record_collection;
@@ -16,7 +15,6 @@ use crate::{
     configs::{Config, TargetConfig},
 };
 
-const DEFAULT_SOURCE: &str = "bin_test";
 
 static CONFIG_VARS: OnceLock<Config> = OnceLock::new();
 
@@ -69,8 +67,11 @@ fn locate_bin_files() -> Result<FileCollection, CollectErr> {
 }
 
 fn main() {
+
     // Initialize static variables
     config_init();
+
+
 
     let file_collection = locate_bin_files().unwrap_or_else(|e| {
         eprintln!("There was a problem collecting files: {:?}", e);
@@ -87,7 +88,7 @@ fn main() {
     
     let collection = spawn_executable(file_collection);
     match collection {
-        Some(c) => println!("{:#?}", c),
+        Some(c) => println!("{}", c),
         None => println!("--- Collection is Empty! ---"),
     } 
 
@@ -122,6 +123,7 @@ mod configs {
     }
 
     #[derive(Debug, Deserialize)]
+    #[allow(unused)]
     pub struct Config {
         #[serde(skip_deserializing)]
         pub target_config: TargetPath,
@@ -132,6 +134,7 @@ mod configs {
     // report out used for outputting test reports
     // error out are for internal error within the TestRunner
     #[derive(Debug, Deserialize)]
+    #[allow(unused)]
     pub struct ConfigPath {
         pub report_out: String,
         pub error_out: String,

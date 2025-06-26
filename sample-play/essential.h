@@ -24,7 +24,7 @@
     }\
 } while (0)
 
-#define debug(fmt, ...) do{\
+#define debug_log(fmt, ...) do{\
     ProcessData data = {\
         .info_type = Log,\
         .log = {\

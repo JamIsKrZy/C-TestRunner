@@ -1,4 +1,3 @@
-mod TestRecordHolder;
 mod collect;
 mod displayer;
 mod record_collection;

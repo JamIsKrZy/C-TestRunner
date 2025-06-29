@@ -1,5 +1,5 @@
 target
-sample-play/bintest/*
+sample-play/bin/*
 test.txt
 
 c_compile.bash

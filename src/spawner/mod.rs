@@ -8,4 +8,3 @@ mod spawner_win;
 #[cfg(target_os = "windows")]
 use spawner_win::*;
 
-mod job_pool;

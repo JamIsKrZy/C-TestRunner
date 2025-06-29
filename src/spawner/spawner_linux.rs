@@ -47,13 +47,13 @@ enum ProcessErr {
 type PidsTrack = (Box<[libc::pid_t]>, Box<[usize]>);
 
 fn init_pipe_with_file_action() -> (Vec<OwnedFd>, Vec<OwnedFd>, Vec<posix_spawn_file_actions_t>) {
-    let DEFAULT_POOL_COUNT = get_global_config_ref().process.max_child_spawn;
+    let default_pool_count = get_global_config_ref().process.max_child_spawn;
 
-    let mut readfd_list = Vec::<OwnedFd>::with_capacity(DEFAULT_POOL_COUNT);
-    let mut writefd_list = Vec::<OwnedFd>::with_capacity(DEFAULT_POOL_COUNT);
-    let mut action_files: Vec<posix_spawn_file_actions_t> = Vec::with_capacity(DEFAULT_POOL_COUNT);
+    let mut readfd_list = Vec::<OwnedFd>::with_capacity(default_pool_count);
+    let mut writefd_list = Vec::<OwnedFd>::with_capacity(default_pool_count);
+    let mut action_files: Vec<posix_spawn_file_actions_t> = Vec::with_capacity(default_pool_count);
 
-    for _ in 0..DEFAULT_POOL_COUNT {
+    for _ in 0..default_pool_count {
         let (readfd, writefd) = unistd::pipe().expect("Failed to create pipelines");
 
         action_files.push(file_action_t_init(&readfd, &writefd));
@@ -333,19 +333,8 @@ mod pipe_handler {
             self, ProcessInfo,
             collection::{StoreData, TestRecord},
         },
-        spawner::{
-            job_pool::{self, JobFn, SIJChannelHandler},
-        },
     };
 
-    fn dummy_job(i: ProcessInfo) {
-        println!(
-            "{}{}{}",
-            termion::color::Fg(color::Blue),
-            i,
-            termion::color::Fg(color::Reset)
-        );
-    }
 
     pub fn read_pipeline(
         shared_collection: TestRecord,

@@ -1,7 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
-    ops::Index,
-    sync::{Arc, Mutex, RwLock},
+    collections::{BTreeMap, HashMap}, fmt::Display, ops::{Index, IndexMut}, sync::{Arc, Mutex, RwLock}
 };
 
 use termion::color;
@@ -15,7 +13,6 @@ use crate::{
 
 type Logs = Vec<LogTypeMessage>;
 type TestKeys = RwLock<HashMap<String, usize>>;
-type Test = Mutex<(StatusType, Logs)>;
 
 pub trait StoreData {
     type T;
@@ -24,11 +21,14 @@ pub trait StoreData {
     fn store(&self, data: Self::T) -> Result<(), Self::U>;
 }
 
+
 #[derive(Debug)]
 struct TestCollection {
     test_map: RwLock<BTreeMap<String, TestKeys>>,
-    test_list: RwLock<Vec<Test>>,
+    test_status: Mutex<Vec<StatusType>>,
+    test_logs: RwLock<Vec<Mutex<Option<Logs>>>>
 }
+
 
 #[derive(Debug)]
 pub struct TestRecord(Arc<TestCollection>);
@@ -36,56 +36,75 @@ pub struct TestRecord(Arc<TestCollection>);
 #[derive(Debug)]
 pub struct CompiledRecord{
     test_tree: BTreeMap<String, HashMap<String, usize>>,
-    test_list: Vec<(StatusType, Vec<LogTypeMessage>)>
+    test_status: Vec<StatusType>,
+    test_logs: Vec<Option<Vec<LogTypeMessage>>>
 }
 
 impl TestRecord {
     pub fn new() -> Self {
         Self(Arc::new(TestCollection {
             test_map: RwLock::new(BTreeMap::new()),
-            test_list: RwLock::new(Vec::new()),
+            test_status: Mutex::new(Vec::new()),
+            test_logs: RwLock::new(Vec::new()),
         }))
     }
 
     pub fn compile(self) -> Result<CompiledRecord, ()> {
         let s = Arc::into_inner(self.0)
             .ok_or(())?;
-        
-        let inner_tree = s.test_map.into_inner()
+
+        let test_tree = s.test_map.into_inner()
             .map_err(|_| ())?
             .into_iter()
             .map(|(k, rwlock_map)| -> Result<_, ()> {
                 let v = rwlock_map.into_inner()
                     .map_err(|_| ())?;
-                    
+
                 Ok((k,v))
             })
             .filter_map(Result::ok)
-            .collect::<BTreeMap<_,_>>();
+            .collect();
 
 
-        let inner_list = s.test_list.into_inner()
+        let test_status = s.test_status.into_inner()
+            .map_err(|_| ())?
+            .into_iter()
+            .collect();
+
+
+        let test_logs = s.test_logs.into_inner()
             .map_err(|_| ())?
             .into_iter()
             .map(Mutex::into_inner)
             .filter_map(Result::ok)
-            .collect::<Vec<_>>();
+            .collect();
 
 
         Ok(CompiledRecord { 
-            test_tree: inner_tree, 
-            test_list: inner_list 
+            test_tree,
+            test_status, 
+            test_logs 
         })
 
     }
 
-    fn new_test_entry(&self) -> Option<usize> {
-        let Ok(mut write_list) = self.0.test_list.write() else {
+        fn new_test_entry(&self) -> Option<usize> {
+        let Ok(mut write_list_stat) = self.0.test_status.lock() else {
             return None;
         };
 
-        let index = write_list.len();
-        write_list.push(Mutex::new((StatusType::Fail, Vec::new())));
+        let index = write_list_stat.len();
+
+        write_list_stat.push(StatusType::Fail);
+        drop(write_list_stat);
+
+        let Ok(mut write_list_logs) = self.0.test_logs.write() else {
+            return None;
+        };
+
+        write_list_logs.push(Mutex::new(None));
+
+
         Some(index)
     }
 
@@ -146,7 +165,7 @@ impl TestRecord {
             )
         };
 
-        // search through the map
+        // search through the map to get the index of test
         let test_index = test_map
             .get(&program_name)
             .ok_or(RecordErr::ProgramNotExist)?
@@ -156,21 +175,19 @@ impl TestRecord {
             .copied()
             .ok_or(RecordErr::TestNotExist)?;
 
-        let read_list = self
+        let mut mutex_vec = self
             .0
-            .test_list
-            .read()
+            .test_status
+            .lock()
             .map_err(|_| RecordErr::PoisonedRead)?;
 
-        let mut test_lock = read_list
-            .index(test_index)
-            .lock()
-            .map_err(|_| RecordErr::PoisonedLock)?;
+        let test_ref = mutex_vec.index_mut(test_index);
 
-        test_lock.0 = stat.t;
+        *test_ref = stat.t;
 
         Ok(())
     }
+
 
     fn append_test_logs(&self, log: Log) -> Result<(), RecordErr> {
         let test_map = &self
@@ -197,19 +214,23 @@ impl TestRecord {
             .copied()
             .ok_or(RecordErr::TestNotExist)?;
 
-        let read_list = self
-            .0
-            .test_list
+        self.0
+            .test_logs
             .read()
-            .map_err(|_| RecordErr::PoisonedRead)?;
-
-        let mut test_lock = read_list
+            .map_err(|_| RecordErr::PoisonedRead)?
             .index(test_index)
             .lock()
+            .map(|mut m|{
+
+                if let Some(v) = m.as_mut() {
+                    v.push(log.into());
+                } else {
+                    *m = Some(vec![log.into()])
+                }
+ 
+            })
             .map_err(|_| RecordErr::PoisonedLock)?;
-
-        test_lock.1.push(log.into());
-
+            
         Ok(())
     }
 }
@@ -251,5 +272,38 @@ impl StoreData for TestRecord {
         }
 
         Ok(())
+    }
+}
+
+
+
+impl Display for CompiledRecord{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+
+        writeln!(f,"CompiledRecord {{")?;
+
+        for i in self.test_tree.iter(){
+            writeln!(f,"\t\"{}\"{{", i.0)?;
+
+            for (test_name, &index) in i.1.iter(){
+                let status = self.test_status[index];
+                let log_count = self.test_logs
+                    .index(index)
+                    .as_ref()
+                    .map(Vec::len)
+                    .unwrap_or(0);
+
+                writeln!(f,"\t\t\"{}\":\tStatus: {:?}\tLogs_count: {}", 
+                    test_name,
+                    status,
+                    log_count 
+                )?;
+            }
+            writeln!(f,"\t}},")?;
+        }
+
+
+
+        writeln!(f,"}}")
     }
 }

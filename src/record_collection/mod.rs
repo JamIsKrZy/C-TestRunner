@@ -21,7 +21,7 @@ const PROGRAM_NAME_MAX_CHAR_SIZE: usize = 64;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-enum StatusType {
+pub(crate) enum StatusType {
     Success,
     Fail,
 }
@@ -129,7 +129,7 @@ impl Display for ProcessInfo {
 }
 
 #[derive(Debug)]
-enum LogTypeMessage {
+pub(crate) enum LogTypeMessage {
     Debug(String),
     Info(String),
     Warning(String),

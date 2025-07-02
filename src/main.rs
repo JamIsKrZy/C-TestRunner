@@ -1,7 +1,7 @@
 mod collect;
-mod displayer;
 mod record_collection;
 mod spawner;
+mod tui;
 mod util;
 
 use std::fs;
@@ -15,7 +15,6 @@ use crate::{
     configs::{Config, TargetConfig},
 };
 
-const DEFAULT_SOURCE: &str = "bin_test";
 
 static CONFIG_VARS: OnceLock<Config> = OnceLock::new();
 
@@ -30,10 +29,11 @@ fn config_init() {
         .set({
             let setting_toml_str =
                 fs::read_to_string(SOURCE_CONFIG).expect("Config file not found!");
-
+                
             let setting =
                 toml::from_str::<TargetConfig>(&setting_toml_str).expect("Unable to parse config!");
-
+                
+            
             println!("{:?}", setting);
 
             let target_toml_str =
@@ -75,7 +75,7 @@ fn main() {
         eprintln!("There was a problem collecting files: {:?}", e);
         std::process::exit(1);
     });
-
+    
     // println!("{:?}\n", file_collection);
     println!(
         "{}[ Setting up executables... ]{}",
@@ -84,12 +84,15 @@ fn main() {
     );
     
     
+    
     let collection = spawn_executable(file_collection);
     match collection {
         Some(c) => println!("{:#?}", c),
         None => println!("--- Collection is Empty! ---"),
     } 
-
+    
+    
+    
     println!(
         "{}[ Finished Executing ]{}",
         color::Fg(color::Green),

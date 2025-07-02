@@ -34,10 +34,10 @@ struct TestCollection {
 pub struct TestRecord(Arc<TestCollection>);
 
 #[derive(Debug)]
-pub struct CompiledRecord{
-    test_tree: BTreeMap<String, HashMap<String, usize>>,
-    test_status: Vec<StatusType>,
-    test_logs: Vec<Option<Vec<LogTypeMessage>>>
+pub(crate) struct CompiledRecord{
+    pub(crate) test_tree: BTreeMap<String, HashMap<String, usize>>,
+    pub(crate) test_status: Vec<StatusType>,
+    pub(crate) test_logs: Vec<Option<Vec<LogTypeMessage>>>
 }
 
 impl TestRecord {

@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap}, fmt::Display, ops::{Index, IndexMut}, sync::{Arc, Mutex, RwLock}
+    collections::{ BTreeMap, HashMap}, fmt::Display, ops::{Index, IndexMut, Range}, sync::{Arc, Mutex, RwLock}
 };
 
 use termion::color;
@@ -38,6 +38,11 @@ pub(crate) struct CompiledRecord{
     pub(crate) test_tree: BTreeMap<String, HashMap<String, usize>>,
     pub(crate) test_status: Vec<StatusType>,
     pub(crate) test_logs: Vec<Option<Vec<LogTypeMessage>>>
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SummarizedRecord{
+    programs: Vec<[String; 2]>
 }
 
 impl TestRecord {
@@ -276,6 +281,30 @@ impl StoreData for TestRecord {
 }
 
 
+impl CompiledRecord {
+
+
+    pub fn summarize(&self) -> SummarizedRecord{
+        let mut list = Vec::new();
+
+        for (program, tests) in self.test_tree.iter() {
+            let total_test= tests.len();
+            let mut total_success = 0usize;
+
+            for (_, &index_ref) in tests{
+                if self.test_status[index_ref] == StatusType::Success {
+                    total_success += 1;
+                }
+            }
+
+
+            list.push([program.clone(), format!("{}/{}", total_success, total_test)]);
+        }
+
+        SummarizedRecord { programs: list }
+    }
+}
+
 
 impl Display for CompiledRecord{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -307,3 +336,12 @@ impl Display for CompiledRecord{
         writeln!(f,"}}")
     }
 }
+
+
+impl Index<Range<usize>> for SummarizedRecord{
+    type Output = [[String; 2]];
+
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        &self.programs[index]
+    }
+} 

@@ -20,7 +20,7 @@ const FUNCTION_MAX_CHAR_SIZE: usize = 32;
 const PROGRAM_NAME_MAX_CHAR_SIZE: usize = 64;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum StatusType {
     Success,
     Fail,

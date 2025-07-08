@@ -2,6 +2,6 @@
 
 [setting]
 config_path="sample-play"
-bin_target="sample-play/bintest"
+bin_target="sample-play/testbin"
 
 

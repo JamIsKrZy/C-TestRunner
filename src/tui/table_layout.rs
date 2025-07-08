@@ -1,11 +1,13 @@
 use core::fmt;
-use std::{ error::Error, io::{self, Stdout, Write}, usize};
+use std::{ cell::{Cell, RefCell}, error::Error, io::{Stdout, Write}, usize};
 
 use termion::{color, raw::RawTerminal, style};
 
 use std::fmt::Write as FmtWrite;
 
-use crate::tui::{OriginPoint, RenderComponent, TerminalSize};
+use crate::tui::{OriginPoint, TerminalSize};
+
+
 
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -14,39 +16,39 @@ pub(super) enum GapMode{
     LeftSpace,
 }
 
-enum TableHeader<const N: usize>{
+pub(super) enum TableHeader<S: AsRef<str>,const N: usize>{
     ColumnTitle([String; N]),
-    TableTitle(String)
+    TableTitle(S)
 }
 
 
-pub(super) struct TableLayout<const N: usize>{
+pub(super) struct TableLayout<'a, const N: usize>{
     width_perc: f32,
     height_perc: f32,
 
     column_gaps: Option<[GapMode; N]>,
-    title_column: Option<TableHeader<N>>
+    title_column: Option<TableHeader<&'a str, N>>
 }
 
 
 
-pub(super) struct TableDisplay<'a, const N: usize>{
+pub(super) struct TableDisplay<'a,'b, const N: usize>{
     term_size: &'a TerminalSize,
     origin: OriginPoint,
 
-    dimension: Option<(u16, u16)>,
-    computed_gaps: Option<[usize; N]>,
+    dimension: (u16, u16),
+    computed_gaps: [usize; N],
 
     width_perc: f32,
     height_perc: f32,
 
     cell_gap: [GapMode; N],
-    title: TableHeader<N>
+    title: RefCell<TableHeader<&'b str, N>>
 }
 
 
 
-impl<const N: usize> TableLayout<N>{
+impl<'a, const N: usize> TableLayout<'a, N>{
 
     pub fn new(width_perc: f32, height_perc: f32) -> Self {
         Self { 
@@ -82,86 +84,116 @@ impl<const N: usize> TableLayout<N>{
         self        
     }
 
-    pub fn set_table_title(mut self, title: String) -> Self {
+    pub fn set_table_title(mut self, title: &'a str) -> Self {
         self.title_column = Some(TableHeader::TableTitle(title));
         self
     }
 
-    pub fn build<'a>(self, origin: OriginPoint, term_size: &'a TerminalSize) -> TableDisplay<'a, N> {
+    pub fn build(self, origin: OriginPoint, term_size: &'a TerminalSize) -> TableDisplay<'_, '_, N> {
+
+        let cell_gap = self.column_gaps.unwrap_or({
+            let gap = Self::default_gaps();
+            [gap; N]
+        });
+
+        let dimension = TableDisplay::<N>::compute_dimension(
+            &term_size, 
+            self.width_perc, 
+            self.height_perc
+        );
+
+        let table_style = self.title_column.unwrap_or({
+                TableHeader::TableTitle("Untitled")   
+        });
+
+
+        let computed_gaps = TableDisplay::compute_gaps(
+            dimension,
+            &cell_gap,
+            &table_style
+        ); 
+
         TableDisplay { 
             term_size, 
             origin, 
-            dimension: None, 
-            computed_gaps: None,
+            dimension, 
+            computed_gaps,
             width_perc: self.width_perc, 
             height_perc: self.height_perc, 
-            cell_gap: self.column_gaps.unwrap_or({
-                let gap = Self::default_gaps();
-                [gap; N]
-            }),
-            title: self.title_column.unwrap_or({
-                TableHeader::TableTitle("Untitled".to_string())   
-            }) 
+            cell_gap,
+            title: RefCell::new(table_style)
         }
     }
 
 }
 
 
-impl<'a, const N: usize> TableDisplay<'_, N>{
+impl<'a, 'b, const N: usize> TableDisplay<'a, 'b, N>{
 
-    fn set_dimension(&mut self) -> (u16,u16) {        
-        let dim = {
-            let term_dim= self.term_size.read();
-            (
-                (term_dim.0 as f32 / (self.width_perc / 100.0)).round() as u16,
-                (term_dim.0 as f32 / (self.width_perc / 100.0)).round() as u16
-            )
-        };
-
-        self.dimension = Some(dim);
-        dim
+    fn compute_dimension(
+        term: &TerminalSize, 
+        width_perc: f32,
+        height_perc: f32
+    ) -> (u16,u16) {        
+        let term_dim= term.read();
+        (
+            (term_dim.0 as f32 * (width_perc / 100.0)).round() as u16,
+            (term_dim.1 as f32 * (height_perc / 100.0)).round() as u16
+        )
     }
 
-    fn compute_gaps(&mut self){
-        let mut overall_space: usize = self.dimension
-            .expect("Dimension uninit")
-            .0
+    pub fn set_header(&self, table_stye: TableHeader<&'b str, N>){
+        *self.title.borrow_mut() = table_stye;
+    }
+
+    pub fn compute_gaps( 
+        dim: (u16,u16), 
+        gap_list: &[GapMode; N],
+        table_stye: &TableHeader<&'b str, N>
+    ) -> [usize;N]{
+        let mut width_space: usize = dim.0
             .saturating_sub(2)
             .into();
 
         let mut spaces = [0usize;N];
+        
+        let mut count = 0;
 
-
-        let count_left = self.cell_gap.iter().filter(|&i|{
-            i == &GapMode::LeftSpace            
-        }).count();
-
-        self.cell_gap.iter().enumerate().filter(|(_, g)|{
-            matches!(g, GapMode::Fixed(_)) 
-        }).map(|(i, g)|{
-            if let GapMode::Fixed(s) = g{
-                overall_space -= *s;
-                spaces[i] = *s;
+        gap_list.iter().enumerate().for_each(|(i, g)|{
+            match g {
+                GapMode::Fixed(s) => {
+                    width_space -= *s;
+                    spaces[i] = *s;
+                },
+                GapMode::LeftSpace => {
+                    count += 1;
+                },
             }
         });
 
-        let share_space = overall_space / count_left;
+        if count != 0{
+            let share_space = width_space / count;
 
-        self.cell_gap.iter().enumerate().filter(|(_, g)|{
-            matches!(g, GapMode::LeftSpace) 
-        }).map(|(i, g)|{
-            if g == &GapMode::LeftSpace{
-                spaces[i] = share_space;
-            }
-        });
+            gap_list.iter().enumerate().for_each(|(i, g)|{
+                if g == &GapMode::LeftSpace{
+                    spaces[i] = share_space;
+                }
+            });    
+        }
 
-        self.computed_gaps = Some(spaces);
+        if matches!(table_stye, TableHeader::ColumnTitle(_)) {
+            let last_index = spaces.len();
+
+            spaces.iter_mut().skip(last_index).for_each(|i|{
+                *i += 1;
+            });
+        }
+        
+        spaces
     }
 
     pub fn get_window_fit(&self) -> usize {
         self.dimension
-            .expect("Dimension uninit")
             .1
             .saturating_sub(4)
             .into()
@@ -172,15 +204,14 @@ impl<'a, const N: usize> TableDisplay<'_, N>{
     fn format_top(&self, fmt: &mut String) -> fmt::Result {
         write!(fmt, "┌")?;
 
-        match self.title {
+        match &*self.title.borrow() {
             TableHeader::ColumnTitle(_) => {
                 let gaps = self.computed_gaps
-                    .as_ref()
-                    .expect("Computed gaps is not initialized");
+                    .as_ref();
 
                 for &g in &gaps[..gaps.len() - 1]{
                     write!(fmt, "{}┬",
-                        "─".repeat(g.into()),
+                        "─".repeat((g - 1).into()),
                     )?;
                 }
 
@@ -192,7 +223,6 @@ impl<'a, const N: usize> TableDisplay<'_, N>{
             },
             TableHeader::TableTitle(_) => {
                 let gap = self.dimension
-                    .expect("Dimenstion uninitiatialized")
                     .0
                     .saturating_sub(2);
 
@@ -202,7 +232,7 @@ impl<'a, const N: usize> TableDisplay<'_, N>{
             },
         }
             
-        writeln!(fmt, "┐")
+        writeln!(fmt, "┐\r")
     }
 
 
@@ -210,7 +240,6 @@ impl<'a, const N: usize> TableDisplay<'_, N>{
         write!(fmt, "└")?;
 
         let gap = self.dimension
-            .expect("Dimenstion uninitiatialized")
             .0
             .saturating_sub(2);
 
@@ -218,7 +247,7 @@ impl<'a, const N: usize> TableDisplay<'_, N>{
             "─".repeat(gap.into())
         )?;
             
-        writeln!(fmt, "┘")
+        writeln!(fmt, "┘\r")
     }  
 
     fn format_table_title(&self, fmt: &mut String) -> fmt::Result{
@@ -226,29 +255,34 @@ impl<'a, const N: usize> TableDisplay<'_, N>{
             style::Bold
         )?;
 
-        match &self.title {
+        match &*self.title.borrow() {
             TableHeader::ColumnTitle(title_list) => {
                 let gaps = self.computed_gaps
-                    .as_ref()
-                    .expect("Computed gaps is not initialized");
+                    .as_ref();
 
-                for (&g, s) in gaps.iter().zip(title_list.iter()){
-                   write!(fmt, "{:<gap_size$}",
+                for (&g, s) in (&gaps[..gaps.len()-1]).iter().zip(title_list.iter()){
+                   write!(fmt, "{:<gap_size$}│",
+                        s,
+                        gap_size = (g - 1).into(),
+                    )?;
+                }
+
+                if let Some((&g, s)) = gaps.last().zip(title_list.last()){
+                    write!(fmt, "{:<gap_size$}",
                         s,
                         gap_size = g.into(),
                     )?;
                 }
             },
             TableHeader::TableTitle(head) => {
-                let dim = self.dimension
-                    .expect("Dimension not computed");
+                let width = self.dimension.0;
                     
-                let gap = (dim.0 - 2).into();
-                write!(fmt, "  {:<gap$}", head);
+                let gap = (width - 4).into();
+                write!(fmt, "  {:<gap$}", head)?;
             },
         }
 
-        write!(fmt, "{}│",
+        writeln!(fmt, "{}│\r",
             style::Reset
         )
     }
@@ -256,54 +290,85 @@ impl<'a, const N: usize> TableDisplay<'_, N>{
     fn format_colum_title_bottom(&self, fmt: &mut String) -> fmt::Result {
         write!(fmt, "├")?;
 
-        let dim = self.dimension
-            .expect("Dimension not computed");
+        match &*self.title.borrow() {
+            TableHeader::ColumnTitle(_) => {
+                let gaps = self.computed_gaps
+                    .as_ref();
 
-        let gap = dim.0 - 2;
-        write!(fmt, "{}", "─".repeat(gap.into()));
+                for &gap in (&gaps[..gaps.len()-1]).iter(){
+                   write!(fmt, "{}┴",
+                        "─".repeat((gap - 1).into())
+                    )?;
+                }
+
+                let &gap = gaps.last().expect("No last gap");
+                write!(fmt, "{}",
+                    "─".repeat(gap.into())
+                )?;
+                
+            },
+            TableHeader::TableTitle(_) => {
+                let width = self.dimension.0;
+
+                let gap = width - 2;
+                write!(fmt, "{}", "─".repeat(gap.into()))?;
+            },
+        }
+        
             
-        writeln!(fmt, "┤")
+        writeln!(fmt, "┤\r")
     }
 
-    fn format_highlight_item(&self, fmt: &mut String, content: [&str; N]) -> fmt::Result {
+    fn format_highlight_item<R>(
+        &self, 
+        fmt: &mut String, 
+        content: &[R; N]
+    ) -> fmt::Result 
+        where R: AsRef<str>
+    {
         write!(fmt, "│{}",
             color::Bg(color::Blue)
         )?;
 
         let gaps = self.computed_gaps
-            .as_ref()
-            .expect("Computed gaps is not initialized");
+            .as_ref();
 
-        for (&g, &s) in gaps.iter().zip(content.iter()){
+        for (&g, s) in gaps.iter().zip(content.iter()){
             write!(fmt, "{:<gap_size$}",
-                s,
+                s.as_ref(),
                 gap_size = g.into(),
             )?;
         }
 
         
 
-        writeln!(fmt, "{}│",
+        writeln!(fmt, "{}│\r",
             color::Bg(color::Reset)
         )
     }
 
 
-    fn format_item(&self, fmt: &mut String, content: &[String; N]) -> fmt::Result {
+    fn format_item<R>(
+        &self, 
+        fmt: &mut String, 
+        content: &[R; N]
+    ) -> fmt::Result 
+        where R: AsRef<str>
+    {
         write!(fmt, "│",)?;
 
+
         let gaps = self.computed_gaps
-            .as_ref()
-            .expect("Computed gaps is not initialized");
+            .as_ref();
 
         for (&g, s) in gaps.iter().zip(content.iter()){
             write!(fmt, "{:<gap_size$}",
-                s,
+                s.as_ref(),
                 gap_size = g.into(),
             )?;
         }
             
-        writeln!(fmt, "│",)
+        writeln!(fmt, "│\r",)
     }
 
 
@@ -329,12 +394,14 @@ impl<'a, const N: usize> TableDisplay<'_, N>{
         todo!()
     }
 
-    pub fn write(
+    pub fn write<R>(
         &self, 
         stdout: &mut RawTerminal<Stdout>, 
-        contents: &[[String; N]], 
+        contents: &[[R; N]], 
         highlight_index: usize
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn Error>> 
+        where R: AsRef<str>
+    {
         let mut buffer = String::new();
 
 
@@ -346,9 +413,9 @@ impl<'a, const N: usize> TableDisplay<'_, N>{
         //print content
         for (i,content) in contents.into_iter().enumerate(){
             if i == highlight_index {
-                self.format_item(&mut buffer, &content)?;
+                self.format_highlight_item(&mut buffer, &content)?;
             } else {
-                self.format_item(&mut buffer, &content)?;
+                self.format_item(&mut buffer, content)?;
             }
         }
         
@@ -357,7 +424,6 @@ impl<'a, const N: usize> TableDisplay<'_, N>{
 
 
         write!(stdout, "{}", buffer)?;
-        stdout.flush()?;
 
         Ok(())
     }

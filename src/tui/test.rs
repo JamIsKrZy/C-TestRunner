@@ -10,13 +10,21 @@ pub fn init_test_collection() -> CompiledRecord {
     CompiledRecord { 
         test_tree: btreemap! {
             "Program1".to_string() => hashmap! {
-                "Addtion".to_string() => 0
+                "Addtion".to_string() => 0,
+                "Subtration".to_string() => 1
+            },
+            "Minecrafters".to_string() => hashmap!{
+                "break block".to_string() => 2
             }
         }, 
         test_status: vec![
+            StatusType::Success,
+            StatusType::Fail,
             StatusType::Success
         ], 
         test_logs: vec![
+            None,
+            None,
             None
         ] 
     }

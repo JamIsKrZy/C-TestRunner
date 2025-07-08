@@ -68,11 +68,7 @@ fn locate_bin_files() -> Result<FileCollection, CollectErr> {
 }
 
 fn main() {
-
-
-    tui::sample_table();
-
-    return;
+    
     // Initialize static variables
     config_init();
 
@@ -88,14 +84,14 @@ fn main() {
         color::Fg(color::Reset)
     );
     
-    
-    
     let collection = spawn_executable(file_collection);
     match collection {
-        Some(c) => println!("{:#?}", c),
+        Some(c) => {
+            tui::display_collection(c);
+        },
         None => println!("--- Collection is Empty! ---"),
     } 
-    
+
     
     
     println!(
@@ -153,24 +149,3 @@ mod configs {
 
 
 
-
-use std::io::{self, Stdout, Write};
-use termion::raw::RawTerminal;
-use std::fmt;
-
-fn write( stdout: &mut RawTerminal<Stdout>) -> io::Result<()> {
-    let mut buffer = String::new(); // must be mutable
-
-    use std::fmt::Write as FmtWrite; // bring fmt::Write into scope
-
-    // write to the buffer instead of stdout directly
-    writeln!(&mut buffer, "Header:")?;
-    writeln!(&mut buffer, "Content line 1")?;
-    writeln!(&mut buffer, "Bottom")?;
-
-    // now write buffer into the terminal
-    write!(stdout, "{}", buffer)?;
-    stdout.flush()?;
-
-    Ok(())
-}

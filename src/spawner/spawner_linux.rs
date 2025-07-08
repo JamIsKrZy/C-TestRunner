@@ -270,7 +270,7 @@ pub fn spawn_executable(fc: FileCollection) -> Option<CompiledRecord> {
             }
 
             //Get proccesses progress
-            sleep(Duration::from_millis(500));
+            sleep(Duration::from_millis(50));
             let stat = { read_pid_status(&pids.0[i], fc.str_file_name_from(pids.1[i])) };
 
             match stat {

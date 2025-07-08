@@ -1,5 +1,9 @@
+
+.vscode
+.vscode/*
 target
 sample-play/bin/*
+sample-play/testbin/*
 test.txt
 
 c_compile.bash

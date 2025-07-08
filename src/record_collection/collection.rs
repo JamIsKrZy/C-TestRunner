@@ -1,7 +1,8 @@
 use std::{
-    collections::{ BTreeMap, HashMap}, fmt::Display, ops::{Index, IndexMut, Range}, sync::{Arc, Mutex, RwLock}
+    cell::{RefCell, UnsafeCell}, collections::{ BTreeMap, HashMap}, fmt::Display, ops::{Index, IndexMut, Range}, sync::{Arc, Mutex, RwLock}
 };
 
+use const_format::concatcp;
 use termion::color;
 
 use super::ProgramInfoType;
@@ -41,8 +42,12 @@ pub(crate) struct CompiledRecord{
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct SummarizedRecord{
-    programs: Vec<[String; 2]>
+pub(crate) struct SummarizedPrograms<'a>{
+    programs: Vec<[&'a str; 2]>
+}
+
+pub(crate) struct SummarizedTest<'a>{
+    tests: Vec<Vec<[&'a str;2]>>
 }
 
 impl TestRecord {
@@ -281,27 +286,85 @@ impl StoreData for TestRecord {
 }
 
 
+impl<'a> Index<usize> for SummarizedTest<'a>{
+    type Output = Vec<[&'a str; 2]>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.tests[index]
+    }
+}
+
+
+
+const SUCCESS_STR: &str =  "SUCCESS";
+const FAIL_STR: &str = "FAIL";
+
+
 impl CompiledRecord {
 
-
-    pub fn summarize(&self) -> SummarizedRecord{
-        let mut list = Vec::new();
+    ///
+    /// this is function is unsafe, first index of the tuple
+    /// must not be mutated
+    pub fn summarize<'a>(&'a self) -> (Vec<UnsafeCell<String>>, SummarizedPrograms<'a>, SummarizedTest<'a>){
+        let mut owned_string_format = Vec::new();
+        let mut programs = Vec::new();
+        let mut program_details = Vec::new();
 
         for (program, tests) in self.test_tree.iter() {
             let total_test= tests.len();
             let mut total_success = 0usize;
 
-            for (_, &index_ref) in tests{
+            let mut test_list = Vec::new();
+            
+            for (test_name, &index_ref) in tests{
+                let test_info;
                 if self.test_status[index_ref] == StatusType::Success {
+                    test_info = [test_name.as_str(), SUCCESS_STR];
                     total_success += 1;
+
+                } else {
+                    test_info = [test_name.as_str(), FAIL_STR];
                 }
+                test_list.push(test_info);
+
             }
 
+            let format_total = format!("   {}/{}", total_success, total_test);
 
-            list.push([program.clone(), format!("{}/{}", total_success, total_test)]);
+            let borrowed_result = {
+                owned_string_format.push(UnsafeCell::new(format_total));
+
+                unsafe {
+                    owned_string_format.last()
+                        .expect("Owned string is empty")
+                        .get()
+                        .as_ref()
+                        .expect("invalid as ref")
+                        .as_str()
+                }
+            };
+
+
+            program_details.push(test_list);
+            programs.push([program.as_str(), borrowed_result]);
+
         }
 
-        SummarizedRecord { programs: list }
+        (
+            owned_string_format,
+            SummarizedPrograms { programs },
+            SummarizedTest { tests: program_details }
+        )
+    }
+
+ 
+}
+
+impl<'a> Index<usize> for SummarizedPrograms<'a>{
+    type Output = [&'a str; 2];
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.programs[index]
     }
 }
 
@@ -337,9 +400,15 @@ impl Display for CompiledRecord{
     }
 }
 
+impl SummarizedPrograms<'_>{
+    
+    pub fn len(&self) -> usize{
+        self.programs.len()
+    }
+}
 
-impl Index<Range<usize>> for SummarizedRecord{
-    type Output = [[String; 2]];
+impl<'a> Index<Range<usize>> for SummarizedPrograms<'a>{
+    type Output = [[&'a str; 2]];
 
     fn index(&self, index: Range<usize>) -> &Self::Output {
         &self.programs[index]

@@ -11,7 +11,6 @@
 
 TEST(array){
 
-
     int arr[3] = {0,1,0};
 
     for (size_t i = 0; i < 3; i++)

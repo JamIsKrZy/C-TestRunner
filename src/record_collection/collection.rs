@@ -1,5 +1,9 @@
 use std::{
-    cell::{RefCell, UnsafeCell}, collections::{ BTreeMap, HashMap}, fmt::Display, ops::{Index, IndexMut, Range}, sync::{Arc, Mutex, RwLock}
+    cell::{RefCell, UnsafeCell},
+    collections::{BTreeMap, HashMap},
+    fmt::Display,
+    ops::{Index, IndexMut, Range},
+    sync::{Arc, Mutex, RwLock},
 };
 
 use const_format::concatcp;
@@ -8,8 +12,7 @@ use termion::color;
 use super::ProgramInfoType;
 use super::{LogTypeMessage, RecordErr, StatusType};
 use crate::{
-    record_collection::{Log, ProcessInfo, Register, Status},
-    util,
+    get_global_config_ref, record_collection::{Log, ProcessInfo, Register, Status}, util
 };
 
 type Logs = Vec<LogTypeMessage>;
@@ -22,32 +25,30 @@ pub trait StoreData {
     fn store(&self, data: Self::T) -> Result<(), Self::U>;
 }
 
-
 #[derive(Debug)]
 struct TestCollection {
     test_map: RwLock<BTreeMap<String, TestKeys>>,
     test_status: Mutex<Vec<StatusType>>,
-    test_logs: RwLock<Vec<Mutex<Option<Logs>>>>
+    test_logs: RwLock<Vec<Mutex<Option<Logs>>>>,
 }
-
 
 #[derive(Debug)]
 pub struct TestRecord(Arc<TestCollection>);
 
 #[derive(Debug)]
-pub(crate) struct CompiledRecord{
+pub(crate) struct CompiledRecord {
     pub(crate) test_tree: BTreeMap<String, HashMap<String, usize>>,
     pub(crate) test_status: Vec<StatusType>,
-    pub(crate) test_logs: Vec<Option<Vec<LogTypeMessage>>>
+    pub(crate) test_logs: Vec<Option<Vec<LogTypeMessage>>>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct SummarizedPrograms<'a>{
-    programs: Vec<[&'a str; 2]>
+pub(crate) struct SummarizedPrograms<'a> {
+    programs: Vec<[&'a str; 2]>,
 }
 
-pub(crate) struct SummarizedTest<'a>{
-    tests: Vec<Vec<[&'a str;2]>>
+pub(crate) struct SummarizedTest<'a> {
+    tests: Vec<Vec<[&'a str; 2]>>,
 }
 
 impl TestRecord {
@@ -60,45 +61,45 @@ impl TestRecord {
     }
 
     pub fn compile(self) -> Result<CompiledRecord, ()> {
-        let s = Arc::into_inner(self.0)
-            .ok_or(())?;
+        let s = Arc::into_inner(self.0).ok_or(())?;
 
-        let test_tree = s.test_map.into_inner()
+        let test_tree = s
+            .test_map
+            .into_inner()
             .map_err(|_| ())?
             .into_iter()
             .map(|(k, rwlock_map)| -> Result<_, ()> {
-                let v = rwlock_map.into_inner()
-                    .map_err(|_| ())?;
+                let v = rwlock_map.into_inner().map_err(|_| ())?;
 
-                Ok((k,v))
+                Ok((k, v))
             })
             .filter_map(Result::ok)
             .collect();
 
-
-        let test_status = s.test_status.into_inner()
+        let test_status = s
+            .test_status
+            .into_inner()
             .map_err(|_| ())?
             .into_iter()
             .collect();
 
-
-        let test_logs = s.test_logs.into_inner()
+        let test_logs = s
+            .test_logs
+            .into_inner()
             .map_err(|_| ())?
             .into_iter()
             .map(Mutex::into_inner)
             .filter_map(Result::ok)
             .collect();
 
-
-        Ok(CompiledRecord { 
+        Ok(CompiledRecord {
             test_tree,
-            test_status, 
-            test_logs 
+            test_status,
+            test_logs,
         })
-
     }
 
-        fn new_test_entry(&self) -> Option<usize> {
+    fn new_test_entry(&self) -> Option<usize> {
         let Ok(mut write_list_stat) = self.0.test_status.lock() else {
             return None;
         };
@@ -113,7 +114,6 @@ impl TestRecord {
         };
 
         write_list_logs.push(Mutex::new(None));
-
 
         Some(index)
     }
@@ -198,7 +198,6 @@ impl TestRecord {
         Ok(())
     }
 
-
     fn append_test_logs(&self, log: Log) -> Result<(), RecordErr> {
         let test_map = &self
             .0
@@ -230,17 +229,15 @@ impl TestRecord {
             .map_err(|_| RecordErr::PoisonedRead)?
             .index(test_index)
             .lock()
-            .map(|mut m|{
-
+            .map(|mut m| {
                 if let Some(v) = m.as_mut() {
                     v.push(log.into());
                 } else {
                     *m = Some(vec![log.into()])
                 }
- 
             })
             .map_err(|_| RecordErr::PoisonedLock)?;
-            
+
         Ok(())
     }
 }
@@ -285,8 +282,7 @@ impl StoreData for TestRecord {
     }
 }
 
-
-impl<'a> Index<usize> for SummarizedTest<'a>{
+impl<'a> Index<usize> for SummarizedTest<'a> {
     type Output = Vec<[&'a str; 2]>;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -294,39 +290,46 @@ impl<'a> Index<usize> for SummarizedTest<'a>{
     }
 }
 
-
-
-const SUCCESS_STR: &str =  "SUCCESS";
+const SUCCESS_STR: &str = "SUCCESS";
 const FAIL_STR: &str = "FAIL";
 
-
 impl CompiledRecord {
-
     ///
     /// this is function is unsafe, first index of the tuple
     /// must not be mutated
-    pub fn summarize<'a>(&'a self) -> (Vec<UnsafeCell<String>>, SummarizedPrograms<'a>, SummarizedTest<'a>){
+    pub fn summarize<'a>(
+        &'a self,
+    ) -> (
+        Vec<UnsafeCell<String>>,
+        SummarizedPrograms<'a>,
+        SummarizedTest<'a>,
+    ) {
         let mut owned_string_format = Vec::new();
         let mut programs = Vec::new();
         let mut program_details = Vec::new();
 
+        let prefix = get_global_config_ref()
+            .target_config
+            .bin_target
+            .clone() + "/"; 
+
+        println!("{prefix}");
+
         for (program, tests) in self.test_tree.iter() {
-            let total_test= tests.len();
+            let total_test = tests.len();
             let mut total_success = 0usize;
 
             let mut test_list = Vec::new();
-            
-            for (test_name, &index_ref) in tests{
+
+            for (test_name, &index_ref) in tests {
                 let test_info;
                 if self.test_status[index_ref] == StatusType::Success {
                     test_info = [test_name.as_str(), SUCCESS_STR];
                     total_success += 1;
-
                 } else {
                     test_info = [test_name.as_str(), FAIL_STR];
                 }
                 test_list.push(test_info);
-
             }
 
             let format_total = format!("   {}/{}", total_success, total_test);
@@ -335,7 +338,8 @@ impl CompiledRecord {
                 owned_string_format.push(UnsafeCell::new(format_total));
 
                 unsafe {
-                    owned_string_format.last()
+                    owned_string_format
+                        .last()
                         .expect("Owned string is empty")
                         .get()
                         .as_ref()
@@ -344,23 +348,21 @@ impl CompiledRecord {
                 }
             };
 
-
             program_details.push(test_list);
-            programs.push([program.as_str(), borrowed_result]);
-
+            programs.push([program.trim_start_matches(prefix.as_str()), borrowed_result]);
         }
 
         (
             owned_string_format,
             SummarizedPrograms { programs },
-            SummarizedTest { tests: program_details }
+            SummarizedTest {
+                tests: program_details,
+            },
         )
     }
-
- 
 }
 
-impl<'a> Index<usize> for SummarizedPrograms<'a>{
+impl<'a> Index<usize> for SummarizedPrograms<'a> {
     type Output = [&'a str; 2];
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -368,49 +370,45 @@ impl<'a> Index<usize> for SummarizedPrograms<'a>{
     }
 }
 
-
-impl Display for CompiledRecord{
+impl Display for CompiledRecord {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "CompiledRecord {{")?;
 
-        writeln!(f,"CompiledRecord {{")?;
+        for i in self.test_tree.iter() {
+            writeln!(f, "\t\"{}\"{{", i.0)?;
 
-        for i in self.test_tree.iter(){
-            writeln!(f,"\t\"{}\"{{", i.0)?;
-
-            for (test_name, &index) in i.1.iter(){
+            for (test_name, &index) in i.1.iter() {
                 let status = self.test_status[index];
-                let log_count = self.test_logs
+                let log_count = self
+                    .test_logs
                     .index(index)
                     .as_ref()
                     .map(Vec::len)
                     .unwrap_or(0);
 
-                writeln!(f,"\t\t\"{}\":\tStatus: {:?}\tLogs_count: {}", 
-                    test_name,
-                    status,
-                    log_count 
+                writeln!(
+                    f,
+                    "\t\t\"{}\":\tStatus: {:?}\tLogs_count: {}",
+                    test_name, status, log_count
                 )?;
             }
-            writeln!(f,"\t}},")?;
+            writeln!(f, "\t}},")?;
         }
 
-
-
-        writeln!(f,"}}")
+        writeln!(f, "}}")
     }
 }
 
-impl SummarizedPrograms<'_>{
-    
-    pub fn len(&self) -> usize{
+impl SummarizedPrograms<'_> {
+    pub fn len(&self) -> usize {
         self.programs.len()
     }
 }
 
-impl<'a> Index<Range<usize>> for SummarizedPrograms<'a>{
+impl<'a> Index<Range<usize>> for SummarizedPrograms<'a> {
     type Output = [[&'a str; 2]];
 
     fn index(&self, index: Range<usize>) -> &Self::Output {
         &self.programs[index]
     }
-} 
+}

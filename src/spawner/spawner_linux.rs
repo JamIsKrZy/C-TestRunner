@@ -28,8 +28,6 @@ use termion::color;
 
 use crate::collect::FileCollection;
 
-
-
 #[derive(Debug)]
 enum SpawnErr {
     FailedToConvertCChar,
@@ -335,12 +333,11 @@ mod pipe_handler {
         },
     };
 
-
     pub fn read_pipeline(
         shared_collection: TestRecord,
         readfds: Vec<OwnedFd>,
         flag: Arc<AtomicBool>,
-    ){
+    ) {
         println!("[ ThreadRunner is Listening ]");
         println!("[ Pipeline Reader Active ]");
 

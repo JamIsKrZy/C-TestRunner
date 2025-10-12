@@ -3,11 +3,10 @@ use std::collections::HashMap;
 use maplit::{btreemap, hashmap};
 use termion::{color, cursor, style};
 
-use crate::record_collection::{collection::CompiledRecord, StatusType};
-
+use crate::record_collection::{StatusType, collection::CompiledRecord};
 
 pub fn init_test_collection() -> CompiledRecord {
-    CompiledRecord { 
+    CompiledRecord {
         test_tree: btreemap! {
             "Program1".to_string() => hashmap! {
                 "Addtion".to_string() => 0,
@@ -16,28 +15,21 @@ pub fn init_test_collection() -> CompiledRecord {
             "Minecrafters".to_string() => hashmap!{
                 "break block".to_string() => 2
             }
-        }, 
-        test_status: vec![
-            StatusType::Success,
-            StatusType::Fail,
-            StatusType::Success
-        ], 
-        test_logs: vec![
-            None,
-            None,
-            None
-        ] 
+        },
+        test_status: vec![StatusType::Success, StatusType::Fail, StatusType::Success],
+        test_logs: vec![None, None, None],
     }
 }
 
-pub fn sample_table(){
-    print!("{}{}{}",
+pub fn sample_table() {
+    print!(
+        "{}{}{}",
         cursor::Hide,
         termion::clear::All,
-        termion::cursor::Goto(1,1)
+        termion::cursor::Goto(1, 1)
     );
 
-    // 50 - width 
+    // 50 - width
     const constant_width: usize = 50;
     let left_c: usize = (constant_width as f32 * 0.70).round() as usize;
     let mut right_c: usize = (constant_width as f32 * 0.30).round() as usize;
@@ -47,25 +39,21 @@ pub fn sample_table(){
     }
 
     println!("┌{}┐", "─".repeat(constant_width));
-    println!("│{}{:<constant_width$}{}│", 
+    println!(
+        "│{}{:<constant_width$}{}│",
         style::Bold,
         "Header",
         style::Reset
     );
     println!("├{}┤", "─".repeat(constant_width));
-    println!("│{:<left_c$}{:<right_c$}│",
-        "Program Test",
-        "4/10"
-    );
-    println!("│{}{:<left_c$}{:<right_c$}{}│",
+    println!("│{:<left_c$}{:<right_c$}│", "Program Test", "4/10");
+    println!(
+        "│{}{:<left_c$}{:<right_c$}{}│",
         color::Bg(color::Blue),
         "Program Test",
         "4/10",
         color::Bg(color::Reset)
     );
-    println!("│{:<left_c$}{:<right_c$}│",
-        "Program Test",
-        "4/10"
-    );
+    println!("│{:<left_c$}{:<right_c$}│", "Program Test", "4/10");
     println!("└{}┘", "─".repeat(constant_width));
 }

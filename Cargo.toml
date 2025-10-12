@@ -3,6 +3,10 @@ name = "_TestRunner"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name="test-run"
+path="src/test_main.rs"
+
 [dependencies]
 const_format = "0.2.34"
 maplit = "1.0.2"

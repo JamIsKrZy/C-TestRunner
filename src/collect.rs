@@ -1,4 +1,4 @@
-use std::{fs, io, path::Path};
+use std::{fs, path::Path};
 
 #[cfg(target_os = "linux")]
 use std::os::unix::fs::PermissionsExt;
@@ -109,7 +109,7 @@ pub fn collect_test_files<P: AsRef<Path>>(path: P) -> Result<FileCollection, Col
     for entry in dir_walker.filter_entry(|e| !is_hidden(e)) {
         let _ = entry.map(|dir| {
             let path = dir.path();
-            // println!("{:?}, {:?}", path.to_str(), path.is_file());
+            
 
             if path.is_file() && is_executable(path) {
                 exec_paths.insert_path(path);

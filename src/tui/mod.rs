@@ -2,7 +2,7 @@ use core::fmt;
 use std::{
     cell::{Ref, RefCell},
     fmt::Formatter,
-    io::{self, stdin, stdout, Stdout, StdoutLock, Write},
+    io::{self, Stdout, StdoutLock, Write, stdin, stdout},
     sync::Arc,
 };
 
@@ -58,7 +58,7 @@ fn init_tables(term: &TerminalSize) -> Box<[TableDisplay<2>; 2]> {
     Box::new([program_table, test_table])
 }
 
-pub fn display_collection(collection: Arc<CompiledRecord>){
+pub fn display_collection(collection: Arc<CompiledRecord>) {
     let (_owned_string, summary_program, program_details) = collection.summarize();
 
     let term = TerminalSize::new();
@@ -102,8 +102,6 @@ pub fn display_collection(collection: Arc<CompiledRecord>){
         match key.expect("Key input Problem") {
             Key::Char('r') => {
                 term.refresh();
-
-                
 
                 tables.iter().for_each(|t| {
                     t.refresh();
@@ -178,18 +176,14 @@ pub fn display_collection(collection: Arc<CompiledRecord>){
     write!(stdout, "{}", cursor::Show).unwrap();
 }
 
-
-
-
-fn check_terminal_size(stdout: &mut RawTerminal<StdoutLock>,term: &TerminalSize) -> Result<(),()>{
+fn check_terminal_size(
+    stdout: &mut RawTerminal<StdoutLock>,
+    term: &TerminalSize,
+) -> Result<(), ()> {
     let dim = term.read();
 
     if dim.0 < 50 && dim.1 < 7 {
-
-        write!(stdout, 
-            "{}[Resize the terminal to display table]",
-            
-        ).unwrap();
+        write!(stdout, "{}[Resize the terminal to display table]", 12).unwrap();
 
         Err(())
     } else {

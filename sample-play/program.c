@@ -2,11 +2,30 @@
 
 #define TEST_CASES\
     TEST_CASE(addition, DEFAULT_SSIZE)\
-    TEST_CASE(multi, DEFAULT_SSIZE)\
     TEST_CASE(emtpy, DEFAULT_SSIZE)\
     TEST_CASE(computey, DEFAULT_SSIZE)\
+    TEST_CASE(array, DEFAULT_SSIZE)
 
 #include "runtime.h"
+
+
+TEST(array){
+
+    int arr[3] = {0,1,0};
+
+    for (size_t i = 0; i < 3; i++)
+    {
+        if (arr[i] == 1) {
+
+            debug("%d", 10);
+            RETURN_FAIL;
+        }
+    }
+    
+
+    RETURN_SUCCESS;
+}
+
 
 
 TEST(addition){
@@ -15,14 +34,9 @@ TEST(addition){
     debug("Hello %d", some);
 
 
-    RETURN_SUCCESS;
+    RETURN_FAIL;
 }
 
-TEST(multi){
-    int some = 1*5;
-
-    RETURN_SUCCESS;
-}
 
 TEST(emtpy){
     int some = 0;
@@ -43,5 +57,5 @@ TEST(computey){
     debug("%d", sum);
 
 
-    RETURN_SUCCESS;
+    RETURN_FAIL;
 }
